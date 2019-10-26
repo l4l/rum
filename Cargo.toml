@@ -1,0 +1,17 @@
+[package]
+name = "rum"
+version = "0.1.0"
+authors = ["Kitsu <mail@kitsu.me>"]
+edition = "2018"
+
+[dependencies]
+tokio = "0.2.0-alpha.6"
+reqwest = "0.10.0-alpha.1"
+unhtml = "0.7.4"
+unhtml_derive = "0.7.4"
+serde = { version = "1.0.101", features = ["derive"] }
+serde_json = "1.0.41"
+mpv = "0.2.3"
+serde-xml-rs = "0.3.1"
+tui = "0.6.2"
+termion = "1.5.3"
