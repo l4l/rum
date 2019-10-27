@@ -6,6 +6,7 @@ authors = ["Kitsu <mail@kitsu.me>"]
 edition = "2018"
 
 license = "WTFPL"
+readme = "README.md"
 repository = "https://github.com/l4l/rum"
 keywords = ["audio", "tui", "music", "player"]
 categories = ["command-line-utilities", "multimedia::audio"]
