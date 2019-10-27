@@ -160,25 +160,23 @@ impl App {
 
     fn events() -> tokio::sync::mpsc::UnboundedReceiver<Key> {
         let (mut tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        tokio::spawn({
-            async move {
-                let mut stdin = tokio::io::stdin();
-                let mut stream = Box::pin(crate::input::events_stream(&mut stdin).await);
-                while let Some(event) = stream.next().await {
-                    let key = match event {
-                        Ok(Event::Key(key)) => key,
-                        Err(err) => {
-                            log::error!("stdint event stream issue: {}", err);
-                            continue;
-                        }
-                        _ => {
-                            continue;
-                        }
-                    };
-                    if let Err(err) = tx.send(key).await {
-                        log::warn!("events ended due to closed rx channel {}", err);
-                        break;
+        tokio::spawn(async move {
+            let mut stdin = tokio::io::stdin();
+            let mut stream = Box::pin(crate::input::events_stream(&mut stdin).await);
+            while let Some(event) = stream.next().await {
+                let key = match event {
+                    Ok(Event::Key(key)) => key,
+                    Err(err) => {
+                        log::error!("stdint event stream issue: {}", err);
+                        continue;
                     }
+                    _ => {
+                        continue;
+                    }
+                };
+                if let Err(err) = tx.send(key).await {
+                    log::warn!("events ended due to closed rx channel {}", err);
+                    break;
                 }
             }
         });

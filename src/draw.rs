@@ -153,7 +153,7 @@ impl AlbumSearch {
         List::new(cursored_line(
             self.album_infos.iter(),
             self.cursor,
-            &chunks[1],
+            chunks[1],
         ))
         .block(Block::default().title("Albums").borders(Borders::ALL))
         .render(&mut frame, chunks[1]);
@@ -188,7 +188,7 @@ impl TracksList {
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
 
-        List::new(cursored_line(self.tracks.iter(), self.cursor, &chunks[1]))
+        List::new(cursored_line(self.tracks.iter(), self.cursor, chunks[1]))
             .block(Block::default().title("Tracks").borders(Borders::ALL))
             .render(&mut frame, chunks[1]);
     }
@@ -197,24 +197,23 @@ impl TracksList {
 fn cursored_line(
     iter: impl IntoIterator<Item = impl ToString>,
     cursor_pos: usize,
-    chunk: &Rect,
+    chunk: Rect,
 ) -> impl Iterator<Item = Text<'static>> {
     let half = usize::from(chunk.height) / 2;
-    let skip = cursor_pos.checked_sub(half).unwrap_or(0);
+    let skip = cursor_pos.saturating_sub(half);
     iter.into_iter()
         .skip(skip)
         .enumerate()
         .map(move |(i, line)| {
-            if i + skip == cursor_pos {
-                Text::styled(
-                    line.to_string(),
-                    Style::default()
-                        .bg(Color::Gray)
-                        .fg(Color::Black)
-                        .modifier(Modifier::BOLD),
-                )
+            let line = line.to_string();
+            let style = if i + skip == cursor_pos {
+                Style::default()
+                    .bg(Color::Gray)
+                    .fg(Color::Black)
+                    .modifier(Modifier::BOLD)
             } else {
-                Text::styled(line.to_string(), Default::default())
-            }
+                Default::default()
+            };
+            Text::styled(line, style)
         })
 }
