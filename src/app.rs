@@ -20,7 +20,7 @@ pub struct TrackSearch {
 
 pub struct State {
     provider: Provider,
-    prev_view: Option<View>,
+    prev_view: Option<(usize, View)>,
     pub view: View,
     pub pointer: usize,
 }
@@ -81,7 +81,8 @@ impl State {
                 buffer.pop();
             }
             TrackSearch(_) => {
-                if let Some(previous) = self.prev_view.take() {
+                if let Some((pointer, previous)) = self.prev_view.take() {
+                    self.pointer = pointer;
                     self.view = previous;
                 }
             }
@@ -109,7 +110,7 @@ impl State {
             AlbumSearch(search)
                 if search.insert_buffer.is_empty() && !search.cached_albums.is_empty() =>
             {
-                self.prev_view = Some(View::AlbumSearch(search.clone()));
+                self.prev_view = Some((self.pointer, View::AlbumSearch(search.clone())));
                 let album = &search.cached_albums[self.pointer];
                 self.pointer = 0;
                 self.view = TrackSearch(self::TrackSearch {
