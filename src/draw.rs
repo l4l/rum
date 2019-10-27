@@ -39,7 +39,6 @@ impl Drawer {
     }
 
     pub fn update_state(&mut self, state: &app::State) -> Result<(), std::io::Error> {
-        self.update_pointer(state.pointer);
         match &state.view {
             app::View::Start(buffer) => {
                 let mut s = AlbumSearch::new();
@@ -53,6 +52,7 @@ impl Drawer {
                 self.reset_to_track_search().update_tracks(&search);
             }
         }
+        self.update_pointer(state.pointer);
         self.draw()
     }
 
