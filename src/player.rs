@@ -4,12 +4,16 @@ use mpv::{MpvHandler, MpvHandlerBuilder, Result};
 
 struct MediaWorker {
     handler: MpvHandler,
+    is_paused: bool,
 }
 
 impl MediaWorker {
     pub fn new() -> Result<Self> {
         let handler = MpvHandlerBuilder::new()?.build()?;
-        Ok(Self { handler })
+        Ok(Self {
+            handler,
+            is_paused: false,
+        })
     }
 
     pub fn loadfile(&mut self, url: &str) -> Result<()> {
@@ -29,6 +33,18 @@ impl MediaWorker {
 
     pub fn prev(&mut self) -> Result<()> {
         self.handler.command(&["playlist-prev"])?;
+        Ok(())
+    }
+
+    pub fn pause(&mut self) -> Result<()> {
+        self.is_paused ^= true;
+        self.handler.set_property("pause", self.is_paused)?;
+        Ok(())
+    }
+
+    pub fn time_seek(&mut self, f: impl FnOnce(i64) -> i64) -> Result<()> {
+        let pos: i64 = self.handler.get_property("time-pos")?;
+        self.handler.set_property("time-pos", f(pos))?;
         Ok(())
     }
 
@@ -53,6 +69,9 @@ pub enum Command {
     Stop,
     NextTrack,
     PrevTrack,
+    Pause,
+    Forward5,
+    Backward5,
 }
 
 pub struct Player {
@@ -89,6 +108,21 @@ impl Player {
                     Ok(Command::PrevTrack) => {
                         if let Err(err) = worker.prev() {
                             log::error!("cannot switch to previous track: {}", err);
+                        }
+                    }
+                    Ok(Command::Pause) => {
+                        if let Err(err) = worker.pause() {
+                            log::error!("cannot pause track: {}", err);
+                        }
+                    }
+                    Ok(Command::Forward5) => {
+                        if let Err(err) = worker.time_seek(|pos| pos + 5) {
+                            log::error!("cannot seek time in forward (5 secs): {}", err);
+                        }
+                    }
+                    Ok(Command::Backward5) => {
+                        if let Err(err) = worker.time_seek(|pos| pos - 5) {
+                            log::error!("cannot seek time in backward (5 secs): {}", err);
                         }
                     }
                     Err(TryRecvError::Empty) => {}
