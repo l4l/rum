@@ -19,9 +19,13 @@ Currently, the tool has 2 main windows: album search and list album tracks.
 Hotkeys are currently cannot be configured and are the following:
 
 - Arrow Up/Down - scroll up/down displayed list;
+- Left/Right - switch to previous/next track;
 - Backspace (at track list view) - display back to album search panel;
-- Ctrl+p - continue/pause player;
-- Delete - quits the program.
+- Ctrl+a (at track list view) - add all tracks to playlist;
+- Ctrl+r - redraw screen (might be helpful after resizing);
+- Ctrl+s - stop playback and clear playlist;
+- Enter - select item at list view (at track list view append to the end of playlist, rather than replacing it);
+- Delete - quit the program.
 
 # Development
 

@@ -120,7 +120,7 @@ impl State {
             TrackSearch(search) => {
                 let track = &search.cached_tracks[self.pointer];
                 let url = self.provider.get_track_url(&track).await?;
-                return Ok(Some(Command::Play(url)));
+                return Ok(Some(Command::Enqueue(url)));
             }
             _ => {}
         }
@@ -185,9 +185,19 @@ impl App {
             match ev {
                 Key::Up => state.pointer_up(),
                 Key::Down => state.pointer_down(),
+                Key::Right => player_commands.send(Command::NextTrack)?,
+                Key::Left => player_commands.send(Command::PrevTrack)?,
                 Key::Delete => return Ok(()),
                 Key::Ctrl('r') => drawer.draw()?,
-                Key::Ctrl('p') => player_commands.send(Command::ContinueOrStop)?,
+                Key::Ctrl('s') => player_commands.send(Command::Stop)?,
+                Key::Ctrl('a') => {
+                    if let View::TrackSearch(ref search) = state.view {
+                        for track in &search.cached_tracks {
+                            let url = state.provider.get_track_url(&track).await?;
+                            player_commands.send(Command::Enqueue(url))?;
+                        }
+                    }
+                }
                 Key::Char('\n') => {
                     if let Some(cmd) = state.action().await? {
                         player_commands.send(cmd)?;
