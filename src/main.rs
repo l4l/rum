@@ -1,20 +1,19 @@
 use std::error::Error;
 
+mod app;
 mod draw;
 mod player;
 mod providers;
 
-use draw::Interafce;
-use player::Player;
-use providers::Provider;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let provider = Provider::new();
+    let provider = providers::Provider::new();
 
-    let (player, chan) = Player::new();
+    let (player, chan) = player::Player::new();
     player.start_worker();
 
-    Interafce::create(provider, chan)?.run().await?;
+    let app = app::App::create(provider, chan)?;
+    app.run().await?;
+
     Ok(())
 }
