@@ -6,7 +6,7 @@ script:
   - cargo fmt --all -- --write-mode=diff
   - cargo test
 rust:
-  - beta
+  - nightly
 before_script:
   - rustup component add clippy
 script:
