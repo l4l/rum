@@ -1,8 +1,3 @@
-use std::sync::mpsc::{self};
-use std::time::Duration;
-
-use termion::event::Key;
-use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
@@ -11,145 +6,83 @@ use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, List, Paragraph, Text, Widget};
 use tui::Terminal;
 
-use crate::player::Command;
-use crate::providers::{Album, Provider, Track};
-
 type Backend = TermionBackend<RawTerminal<std::io::Stdout>>;
 
-#[derive(Default)]
-pub struct DataState {
-    current_albums: Option<Vec<Album>>,
-    current_tracks: Option<Vec<Track>>,
-}
-
-pub struct Interafce {
-    terminal: Terminal<Backend>,
-    insert_dirty: bool,
+pub struct Drawer {
     state: DrawState,
-    cached_data: DataState,
-    provider: Provider,
-    player_commands: mpsc::Sender<Command>,
+    terminal: Terminal<Backend>,
 }
 
-impl Interafce {
-    pub fn create(
-        provider: Provider,
-        player_commands: mpsc::Sender<Command>,
-    ) -> Result<Self, std::io::Error> {
+impl Drawer {
+    pub fn new() -> Result<Self, std::io::Error> {
         let stdout = std::io::stdout().into_raw_mode()?;
         let backend = TermionBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
-        Ok(Self {
+
+        let mut this = Self {
+            state: DrawState::AlbumSearch(AlbumSearch::new()),
             terminal,
-            insert_dirty: false,
-            state: DrawState::new(),
-            cached_data: Default::default(),
-            provider,
-            player_commands,
-        })
+        };
+
+        this.terminal.clear()?;
+        this.draw()?;
+
+        Ok(this)
     }
 
-    pub fn unmark_dirty(&mut self) -> bool {
-        let prev = self.insert_dirty;
-        self.insert_dirty = false;
-        prev
+    pub fn update_pointer(&mut self, pointer: usize) {
+        match &mut self.state {
+            DrawState::AlbumSearch(search) => search.cursor = pointer,
+            DrawState::TracksList(search) => search.cursor = pointer,
+        }
     }
 
-    pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
-            for key in std::io::stdin().keys() {
-                if tx.send(key).is_err() {
-                    break;
-                }
+    pub fn update_state(&mut self, state: &app::State) -> Result<(), std::io::Error> {
+        self.update_pointer(state.pointer);
+        match &state.view {
+            app::View::Start(buffer) => {
+                let mut s = AlbumSearch::new();
+                s.insert_buffer = buffer.clone();
+                self.state = DrawState::AlbumSearch(s);
             }
-        });
+            app::View::AlbumSearch(search) => {
+                self.reset_to_album_search().update_albums(&search);
+            }
+            app::View::TrackSearch(search) => {
+                self.reset_to_track_search().update_tracks(&search);
+            }
+        }
+        self.draw()
+    }
 
-        self.terminal.clear()?;
-        self.terminal.show_cursor()?;
-        self.terminal.set_cursor(1, 1)?;
-        let mut no_update = false;
-        loop {
-            if !no_update {
-                self.state.draw(&mut self.terminal)?;
-            } else {
-                // hacky way for preventing a high cpu load
-                // better way will be a reaction to events, rather than looping
-                std::thread::sleep(Duration::from_millis(50));
-            }
+    fn reset_to_album_search(&mut self) -> &mut AlbumSearch {
+        if let DrawState::AlbumSearch(ref mut this) = self.state {
+            return this;
+        }
+        self.state = DrawState::AlbumSearch(AlbumSearch::new());
+        if let DrawState::AlbumSearch(ref mut this) = &mut self.state {
+            this
+        } else {
+            unreachable!()
+        }
+    }
 
-            no_update = true;
-            while let Ok(key) = rx.try_recv() {
-                no_update = false;
-                match key? {
-                    Key::Up => {
-                        *self.state.scrolled_mut() =
-                            self.state.scrolled_mut().checked_sub(1).unwrap_or(0);
-                    }
-                    Key::Down => {
-                        *self.state.scrolled_mut() += 1;
-                    }
-                    Key::Delete => return Ok(()),
-                    Key::Char('\n') | Key::Insert => {
-                        self.insert_dirty = true;
-                    }
-                    Key::Char(c) => {
-                        if let DrawState::AlbumSearch(ref mut state) = self.state {
-                            state.insert_buf.push(c);
-                        }
-                    }
-                    Key::Ctrl('p') => {
-                        self.player_commands.send(Command::ContinueOrStop)?;
-                    }
-                    Key::Backspace => match &mut self.state {
-                        DrawState::AlbumSearch(ref mut state) => {
-                            state.insert_buf.pop();
-                        }
-                        DrawState::TracksList(_) => {
-                            let mut state = AlbumSearch::new();
-                            state.reset_albums(self.cached_data.current_albums.as_ref().unwrap());
-                            self.state = DrawState::AlbumSearch(state);
-                        }
-                    },
-                    _ => {}
-                }
-            }
+    fn reset_to_track_search(&mut self) -> &mut TracksList {
+        if let DrawState::TracksList(ref mut this) = self.state {
+            return this;
+        }
+        self.state = DrawState::TracksList(TracksList::new());
+        if let DrawState::TracksList(ref mut this) = &mut self.state {
+            this
+        } else {
+            unreachable!()
+        }
+    }
 
-            if !self.unmark_dirty() {
-                continue;
-            }
-            match &mut self.state {
-                DrawState::AlbumSearch(state) if !state.insert_buf.is_empty() => {
-                    let albums = self.provider.text_search(&state.insert_buf).await?.albums;
-                    state.insert_buf.clear();
-                    self.cached_data.current_albums = Some(albums);
-                    state.reset_albums(self.cached_data.current_albums.as_ref().unwrap());
-                }
-                DrawState::AlbumSearch(state) => {
-                    if let Some(ref current_albums) = self.cached_data.current_albums {
-                        if let Some(album_info) = current_albums.get(state.scrolled) {
-                            let tracks = self.provider.album_tracks(&album_info).await?.tracks;
-                            let list = TracksList::new(
-                                tracks.iter().map(|track| track.name.clone()).collect(),
-                            );
-                            self.cached_data.current_tracks = Some(tracks);
-                            self.state = DrawState::TracksList(list);
-                        }
-                    }
-                }
-                DrawState::TracksList(state) => {
-                    if let Some(track) = self
-                        .cached_data
-                        .current_tracks
-                        .as_ref()
-                        .unwrap()
-                        .get(state.scrolled)
-                    {
-                        let url = self.provider.get_track_url(&track).await?;
-                        self.player_commands.send(Command::Play(url))?;
-                    }
-                }
-            }
+    pub fn draw(&mut self) -> Result<(), std::io::Error> {
+        match &self.state {
+            DrawState::AlbumSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
+            DrawState::TracksList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
         }
     }
 }
@@ -159,37 +92,28 @@ enum DrawState {
     TracksList(TracksList),
 }
 
-impl DrawState {
-    fn new() -> Self {
-        DrawState::AlbumSearch(AlbumSearch::new())
-    }
-
-    fn draw(&mut self, terminal: &mut Terminal<Backend>) -> Result<(), std::io::Error> {
-        match self {
-            DrawState::AlbumSearch(state) => terminal.draw(|mut f| state.draw(&mut f)),
-            DrawState::TracksList(state) => terminal.draw(|mut f| state.draw(&mut f)),
-        }
-    }
-
-    fn scrolled_mut(&mut self) -> &mut usize {
-        match self {
-            DrawState::AlbumSearch(state) => &mut state.scrolled,
-            DrawState::TracksList(state) => &mut state.scrolled,
-        }
-    }
-}
-
 struct AlbumSearch {
-    insert_buf: String,
-    scrolled: usize,
+    insert_buffer: String,
+    cursor: usize,
     album_infos: Vec<String>,
 }
 
+use crate::app;
+
 impl AlbumSearch {
-    fn reset_albums<'a>(&mut self, albums: impl IntoIterator<Item = &'a Album>) {
-        self.scrolled = 0;
+    fn new() -> Self {
+        Self {
+            insert_buffer: String::with_capacity(256),
+            cursor: 0,
+            album_infos: Vec::new(),
+        }
+    }
+
+    fn update_albums(&mut self, albums: &app::AlbumSearch) {
+        self.insert_buffer = albums.insert_buffer.clone();
         self.album_infos = albums
-            .into_iter()
+            .cached_albums
+            .iter()
             .map(|album| {
                 format!(
                     "{}: {} (year: {})",
@@ -204,14 +128,6 @@ impl AlbumSearch {
             .collect();
     }
 
-    fn new() -> Self {
-        Self {
-            insert_buf: String::with_capacity(256),
-            scrolled: 0,
-            album_infos: Vec::new(),
-        }
-    }
-
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -219,7 +135,7 @@ impl AlbumSearch {
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
         let texts = [Text::styled(
-            &self.insert_buf,
+            &self.insert_buffer,
             Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
         )];
         Paragraph::new(texts.iter())
@@ -233,28 +149,31 @@ impl AlbumSearch {
             .wrap(true)
             .render(&mut frame, chunks[0]);
 
-        List::new(
-            self.album_infos
-                .iter()
-                .skip(self.scrolled)
-                .map(|line| Text::raw(line.to_string())),
-        )
-        .block(Block::default().title("Albums").borders(Borders::ALL))
-        .render(&mut frame, chunks[1]);
+        List::new(cursored_line(self.album_infos.iter(), self.cursor))
+            .block(Block::default().title("Albums").borders(Borders::ALL))
+            .render(&mut frame, chunks[1]);
     }
 }
 
 struct TracksList {
-    scrolled: usize,
+    cursor: usize,
     tracks: Vec<String>,
 }
 
 impl TracksList {
-    fn new(tracks: Vec<String>) -> Self {
+    fn new() -> Self {
         Self {
-            scrolled: 0,
-            tracks,
+            cursor: 0,
+            tracks: Vec::new(),
         }
+    }
+
+    fn update_tracks(&mut self, tracks: &app::TrackSearch) {
+        self.tracks = tracks
+            .cached_tracks
+            .iter()
+            .map(|track| track.name.clone())
+            .collect();
     }
 
     fn draw(&self, mut frame: &mut Frame<Backend>) {
@@ -264,13 +183,27 @@ impl TracksList {
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
 
-        List::new(
-            self.tracks
-                .iter()
-                .skip(self.scrolled)
-                .map(|line| Text::raw(line.to_string())),
-        )
-        .block(Block::default().title("Tracks").borders(Borders::ALL))
-        .render(&mut frame, chunks[1]);
+        List::new(cursored_line(self.tracks.iter(), self.cursor))
+            .block(Block::default().title("Tracks").borders(Borders::ALL))
+            .render(&mut frame, chunks[1]);
     }
+}
+
+fn cursored_line(
+    iter: impl IntoIterator<Item = impl ToString>,
+    cursor_pos: usize,
+) -> impl Iterator<Item = Text<'static>> {
+    iter.into_iter().enumerate().map(move |(i, line)| {
+        if i == cursor_pos {
+            Text::styled(
+                line.to_string(),
+                Style::default()
+                    .bg(Color::Gray)
+                    .fg(Color::Black)
+                    .modifier(Modifier::BOLD),
+            )
+        } else {
+            Text::styled(line.to_string(), Default::default())
+        }
+    })
 }

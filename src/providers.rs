@@ -2,7 +2,7 @@ use reqwest::Client;
 use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
-#[derive(FromHtml, Debug)]
+#[derive(FromHtml, Debug, Clone)]
 pub struct Album {
     #[html(selector = "div.album__title a.deco-link", attr = "href")]
     pub url: String,
@@ -28,7 +28,7 @@ pub struct Albums {
     pub albums: Vec<Album>,
 }
 
-#[derive(FromHtml, Debug)]
+#[derive(FromHtml, Debug, Clone)]
 pub struct Track {
     #[html(selector = "div.d-track__name a.d-track__title", attr = "href")]
     pub url: String,
