@@ -25,6 +25,7 @@ impl Drawer {
         };
 
         this.terminal.clear()?;
+        this.terminal.hide_cursor()?;
         this.draw()?;
 
         Ok(this)
@@ -38,7 +39,6 @@ impl Drawer {
     }
 
     pub fn update_state(&mut self, state: &app::State) -> Result<(), std::io::Error> {
-        self.update_pointer(state.pointer);
         match &state.view {
             app::View::Start(buffer) => {
                 let mut s = AlbumSearch::new();
@@ -52,6 +52,7 @@ impl Drawer {
                 self.reset_to_track_search().update_tracks(&search);
             }
         }
+        self.update_pointer(state.pointer);
         self.draw()
     }
 
@@ -152,7 +153,7 @@ impl AlbumSearch {
         List::new(cursored_line(
             self.album_infos.iter(),
             self.cursor,
-            &chunks[1],
+            chunks[1],
         ))
         .block(Block::default().title("Albums").borders(Borders::ALL))
         .render(&mut frame, chunks[1]);
@@ -187,7 +188,7 @@ impl TracksList {
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
 
-        List::new(cursored_line(self.tracks.iter(), self.cursor, &chunks[1]))
+        List::new(cursored_line(self.tracks.iter(), self.cursor, chunks[1]))
             .block(Block::default().title("Tracks").borders(Borders::ALL))
             .render(&mut frame, chunks[1]);
     }
@@ -196,24 +197,23 @@ impl TracksList {
 fn cursored_line(
     iter: impl IntoIterator<Item = impl ToString>,
     cursor_pos: usize,
-    chunk: &Rect,
+    chunk: Rect,
 ) -> impl Iterator<Item = Text<'static>> {
     let half = usize::from(chunk.height) / 2;
-    let skip = cursor_pos.checked_sub(half).unwrap_or(0);
+    let skip = cursor_pos.saturating_sub(half);
     iter.into_iter()
         .skip(skip)
         .enumerate()
         .map(move |(i, line)| {
-            if i + skip == cursor_pos {
-                Text::styled(
-                    line.to_string(),
-                    Style::default()
-                        .bg(Color::Gray)
-                        .fg(Color::Black)
-                        .modifier(Modifier::BOLD),
-                )
+            let line = line.to_string();
+            let style = if i + skip == cursor_pos {
+                Style::default()
+                    .bg(Color::Gray)
+                    .fg(Color::Black)
+                    .modifier(Modifier::BOLD)
             } else {
-                Text::styled(line.to_string(), Default::default())
-            }
+                Default::default()
+            };
+            Text::styled(line, style)
         })
 }
