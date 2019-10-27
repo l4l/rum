@@ -6,6 +6,8 @@ RUM is a terminal music player, that able to play remote media from different so
 
 # Usage
 
+Playing media is performed via _mpv_ player, thus it need to be accessible.
+
 ```bash
 cargo install rum-player
 # by default installed at ~/.cargo/bin, you may add it to path:
