@@ -25,6 +25,7 @@ impl Drawer {
         };
 
         this.terminal.clear()?;
+        this.terminal.hide_cursor()?;
         this.draw()?;
 
         Ok(this)
