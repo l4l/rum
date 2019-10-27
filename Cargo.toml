@@ -1,8 +1,15 @@
 [package]
-name = "rum"
+name = "rum-player"
+description = "TUI-based music player"
 version = "0.1.0"
 authors = ["Kitsu <mail@kitsu.me>"]
 edition = "2018"
+
+license = "WTFPL"
+readme = "README.md"
+repository = "https://github.com/l4l/rum"
+keywords = ["audio", "tui", "music", "player"]
+categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]
 tokio = "0.2.0-alpha.6"
@@ -15,3 +22,6 @@ mpv = "0.2.3"
 serde-xml-rs = "0.3.1"
 tui = "0.6.2"
 termion = "1.5.3"
+
+[badges]
+travis-ci = { repository = "l4l/rum" }
