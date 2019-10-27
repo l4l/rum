@@ -24,6 +24,9 @@ Hotkeys are currently cannot be configured and are the following:
 - Ctrl+a (at track list view) - add all tracks to playlist;
 - Ctrl+r - redraw screen (might be helpful after resizing);
 - Ctrl+s - stop playback and clear playlist;
+- Space - pause/unpause currently played track;
+- [ - skip 5 seconds forward of currently played track;
+- ] - skip 5 seconds backward of currently played track;
 - Enter - select item at list view (at track list view append to the end of playlist, rather than replacing it);
 - Delete - quit the program.
 
