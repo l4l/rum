@@ -202,7 +202,7 @@ impl App {
                 Key::Right => player_commands.send(Command::NextTrack)?,
                 Key::Left => player_commands.send(Command::PrevTrack)?,
                 Key::Delete => return Ok(()),
-                Key::Char(' ') => player_commands.send(Command::Pause)?,
+                Key::Ctrl('p') => player_commands.send(Command::Pause)?,
                 Key::Char(']') => player_commands.send(Command::Forward5)?,
                 Key::Char('[') => player_commands.send(Command::Backward5)?,
                 Key::Ctrl('r') => drawer.draw()?,
