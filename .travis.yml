@@ -1,0 +1,13 @@
+os:
+  - linux
+language: rust
+cache: cargo
+script:
+  - cargo fmt --all -- --write-mode=diff
+  - cargo test
+rust:
+  - beta
+before_script:
+  - rustup component add clippy
+script:
+  - cargo clippy
