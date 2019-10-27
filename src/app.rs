@@ -82,6 +82,7 @@ impl State {
             }
             TrackSearch(_) => {
                 if let Some((pointer, previous)) = self.prev_view.take() {
+                    log::debug!("restoring prev_view with pointer: {}", pointer);
                     self.pointer = pointer;
                     self.view = previous;
                 }
@@ -163,7 +164,8 @@ impl App {
             // eventually switch to tokio::io::stdin(), but need to parse keys manually
             for key in std::io::stdin().keys() {
                 let key: Key = key?;
-                if tx.send(key).is_err() {
+                if let Err(err) = tx.send(key) {
+                    log::warn!("events ended due to closed rx channel {}", err);
                     break;
                 }
             }
@@ -193,16 +195,26 @@ impl App {
                 Key::Ctrl('a') => {
                     if let View::TrackSearch(ref search) = state.view {
                         for track in &search.cached_tracks {
-                            let url = state.provider.get_track_url(&track).await?;
-                            player_commands.send(Command::Enqueue(url))?;
+                            match state.provider.get_track_url(&track).await {
+                                Ok(url) => {
+                                    player_commands.send(Command::Enqueue(url))?;
+                                }
+                                Err(err) => {
+                                    log::error!("cannot get track {:?} url: {}", track, err);
+                                }
+                            }
                         }
                     }
                 }
-                Key::Char('\n') => {
-                    if let Some(cmd) = state.action().await? {
+                Key::Char('\n') => match state.action().await {
+                    Ok(Some(cmd)) => {
                         player_commands.send(cmd)?;
                     }
-                }
+                    Ok(_) => {}
+                    Err(err) => {
+                        log::error!("cannot perform state action: {}", err);
+                    }
+                },
                 Key::Char(c) => state.push_char(c),
                 Key::Backspace => state.backspace(),
                 _ => {

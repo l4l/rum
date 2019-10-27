@@ -38,6 +38,9 @@ impl MediaWorker {
                 mpv::Event::Shutdown | mpv::Event::Idle => {
                     return Ok(false);
                 }
+                mpv::Event::FileLoaded => {
+                    log::debug!("mpv: file loaded");
+                }
                 _ => {}
             }
         }
@@ -69,19 +72,30 @@ impl Player {
                 worker.poll_events()?;
                 match self.rx.try_recv() {
                     Ok(Command::Enqueue(url)) => {
-                        let _ = worker.loadfile(&url);
+                        if let Err(err) = worker.loadfile(&url) {
+                            log::error!("cannot perform loadfile: {}", err);
+                        }
                     }
                     Ok(Command::Stop) => {
-                        let _ = worker.stop();
+                        if let Err(err) = worker.stop() {
+                            log::error!("cannot stop the track: {}", err);
+                        }
                     }
                     Ok(Command::NextTrack) => {
-                        let _ = worker.next();
+                        if let Err(err) = worker.next() {
+                            log::error!("cannot switch to next track: {}", err);
+                        }
                     }
                     Ok(Command::PrevTrack) => {
-                        let _ = worker.prev();
+                        if let Err(err) = worker.prev() {
+                            log::error!("cannot switch to previous track: {}", err);
+                        }
                     }
                     Err(TryRecvError::Empty) => {}
-                    Err(TryRecvError::Disconnected) => return Ok(()),
+                    Err(TryRecvError::Disconnected) => {
+                        log::warn!("player command stream disconnected, finishing");
+                        return Ok(());
+                    }
                 }
             }
         })
