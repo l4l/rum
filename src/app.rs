@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
-use termion::event::Key;
-use termion::input::TermRead;
+use termion::event::{Event, Key};
+use tokio::prelude::*;
 
 use crate::draw::Drawer;
 use crate::player::Command;
@@ -158,18 +158,29 @@ impl App {
         })
     }
 
-    fn events() -> mpsc::Receiver<Key> {
-        let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || -> Result<(), std::io::Error> {
-            // eventually switch to tokio::io::stdin(), but need to parse keys manually
-            for key in std::io::stdin().keys() {
-                let key: Key = key?;
-                if let Err(err) = tx.send(key) {
-                    log::warn!("events ended due to closed rx channel {}", err);
-                    break;
+    fn events() -> tokio::sync::mpsc::UnboundedReceiver<Key> {
+        let (mut tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn({
+            async move {
+                let mut stdin = tokio::io::stdin();
+                let mut stream = Box::pin(crate::input::events_stream(&mut stdin).await);
+                while let Some(event) = stream.next().await {
+                    let key = match event {
+                        Ok(Event::Key(key)) => key,
+                        Err(err) => {
+                            log::error!("stdint event stream issue: {}", err);
+                            continue;
+                        }
+                        _ => {
+                            continue;
+                        }
+                    };
+                    if let Err(err) = tx.send(key).await {
+                        log::warn!("events ended due to closed rx channel {}", err);
+                        break;
+                    }
                 }
             }
-            Ok(())
         });
         rx
     }
@@ -182,8 +193,9 @@ impl App {
 
         let mut state = State::new(provider);
         let mut drawer = Drawer::new()?;
+        let mut events = App::events();
 
-        for ev in App::events() {
+        while let Some(ev) = events.next().await {
             match ev {
                 Key::Up => state.pointer_up(),
                 Key::Down => state.pointer_down(),

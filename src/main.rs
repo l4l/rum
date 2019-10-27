@@ -4,6 +4,7 @@ use flexi_logger::Logger;
 
 mod app;
 mod draw;
+mod input;
 mod player;
 mod providers;
 
