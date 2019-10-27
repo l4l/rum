@@ -1,6 +1,6 @@
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
-use tui::layout::{Alignment, Constraint, Direction, Layout};
+use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use tui::style::{Color, Modifier, Style};
 use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, List, Paragraph, Text, Widget};
@@ -149,9 +149,13 @@ impl AlbumSearch {
             .wrap(true)
             .render(&mut frame, chunks[0]);
 
-        List::new(cursored_line(self.album_infos.iter(), self.cursor))
-            .block(Block::default().title("Albums").borders(Borders::ALL))
-            .render(&mut frame, chunks[1]);
+        List::new(cursored_line(
+            self.album_infos.iter(),
+            self.cursor,
+            &chunks[1],
+        ))
+        .block(Block::default().title("Albums").borders(Borders::ALL))
+        .render(&mut frame, chunks[1]);
     }
 }
 
@@ -183,7 +187,7 @@ impl TracksList {
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
 
-        List::new(cursored_line(self.tracks.iter(), self.cursor))
+        List::new(cursored_line(self.tracks.iter(), self.cursor, &chunks[1]))
             .block(Block::default().title("Tracks").borders(Borders::ALL))
             .render(&mut frame, chunks[1]);
     }
@@ -192,18 +196,24 @@ impl TracksList {
 fn cursored_line(
     iter: impl IntoIterator<Item = impl ToString>,
     cursor_pos: usize,
+    chunk: &Rect,
 ) -> impl Iterator<Item = Text<'static>> {
-    iter.into_iter().enumerate().map(move |(i, line)| {
-        if i == cursor_pos {
-            Text::styled(
-                line.to_string(),
-                Style::default()
-                    .bg(Color::Gray)
-                    .fg(Color::Black)
-                    .modifier(Modifier::BOLD),
-            )
-        } else {
-            Text::styled(line.to_string(), Default::default())
-        }
-    })
+    let half = usize::from(chunk.height) / 2;
+    let skip = cursor_pos.checked_sub(half).unwrap_or(0);
+    iter.into_iter()
+        .skip(skip)
+        .enumerate()
+        .map(move |(i, line)| {
+            if i + skip == cursor_pos {
+                Text::styled(
+                    line.to_string(),
+                    Style::default()
+                        .bg(Color::Gray)
+                        .fg(Color::Black)
+                        .modifier(Modifier::BOLD),
+                )
+            } else {
+                Text::styled(line.to_string(), Default::default())
+            }
+        })
 }
