@@ -109,9 +109,9 @@ impl State {
             AlbumSearch(search)
                 if search.insert_buffer.is_empty() && !search.cached_albums.is_empty() =>
             {
-                self.pointer = 0;
                 self.prev_view = Some(View::AlbumSearch(search.clone()));
                 let album = &search.cached_albums[self.pointer];
+                self.pointer = 0;
                 self.view = TrackSearch(self::TrackSearch {
                     cached_tracks: self.provider.album_tracks(&album).await?.tracks,
                 });
