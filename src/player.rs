@@ -64,6 +64,7 @@ impl MediaWorker {
     }
 }
 
+#[derive(Debug)]
 pub enum Command {
     Enqueue(String),
     Stop,

@@ -1,4 +1,6 @@
+use futures::future::TryFutureExt;
 use reqwest::Client;
+use snafu::ResultExt;
 use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
@@ -91,52 +93,25 @@ struct DownloadInfo {
     s: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, snafu::Snafu)]
 pub enum Error {
-    HttpError(reqwest::Error),
-    HtmlError(unhtml::Error),
-    JsonError(serde_json::Error),
-    XmlError(serde_xml_rs::Error),
+    #[snafu(display("http error, url: {}, err: {}", url, source))]
+    HttpError { url: String, source: reqwest::Error },
+    #[snafu(display("html error: {}", source))]
+    HtmlError { source: unhtml::Error },
+    #[snafu(display("JsonError({})", source))]
+    JsonError {
+        body: String,
+        source: serde_json::Error,
+    },
+    #[snafu(display("XmlError({})", source))]
+    XmlError {
+        body: String,
+        source: serde_xml_rs::Error,
+    },
 }
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::HttpError(err) => write!(f, "HttpError({})", err),
-            Error::HtmlError(err) => write!(f, "HtmlError({})", err),
-            Error::JsonError(err) => write!(f, "JsonError({})", err),
-            Error::XmlError(err) => write!(f, "XmlError({})", err),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl From<reqwest::Error> for Error {
-    fn from(err: reqwest::Error) -> Self {
-        Error::HttpError(err)
-    }
-}
-
-impl From<unhtml::Error> for Error {
-    fn from(err: unhtml::Error) -> Self {
-        Error::HtmlError(err)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::JsonError(err)
-    }
-}
-
-impl From<serde_xml_rs::Error> for Error {
-    fn from(err: serde_xml_rs::Error) -> Self {
-        Error::XmlError(err)
-    }
-}
 
 /// Yandex Music info/media provider
 pub struct Provider {
@@ -154,22 +129,32 @@ impl Provider {
         const SEARCH_TYPE: &str = "albums"; // FIXME: paramterize
         let url = format!("{}/search?text={}&type={}", BASE_URL, text, SEARCH_TYPE);
 
-        let body = self.client.get(&url).send().await?.text().await?;
-        Albums::from_html(&body).map_err(Into::into)
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| Albums::from_html(&body).context(HtmlError {}))
     }
 
     pub async fn album_tracks(&self, album: &Album) -> Result<Tracks> {
         let url = format!("{}{}", BASE_URL, album.url);
 
-        let body = self.client.get(&url).send().await?.text().await?;
-        Tracks::from_html(&body).map_err(Into::into)
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| Tracks::from_html(&body).context(HtmlError {}))
     }
 
     pub async fn get_track_url(&self, track: &Track) -> Result<String> {
         let (album_id, track_id) = track.id();
         let url = format!("https://music.yandex.ru/api/v2.1/handlers/track/{}:{}/web-album-track-track-saved/download/m", track_id, album_id);
 
-        let balancer = self
+        let url = self
             .client
             .get(&url)
             .header(
@@ -177,13 +162,26 @@ impl Provider {
                 format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", album_id),
             )
             .send()
-            .await?
-            .text()
-            .await?;
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|balancer| {
+                serde_json::from_str::<BalancerResponse>(&balancer)
+                    .map(|r| r.src)
+                    .context(JsonError { body: balancer })
+            })?;
 
-        let response: BalancerResponse = serde_json::from_str(&balancer)?;
-        let response = self.client.get(&response.src).send().await?.text().await?;
-        let info: DownloadInfo = serde_xml_rs::from_str(&response)?;
+        let info = self
+            .client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|response| {
+                serde_xml_rs::from_str::<DownloadInfo>(&response)
+                    .context(XmlError { body: response })
+            })?;
 
         Ok(format!(
             "https://{}/get-mp3/11111111111111111111111111111111/{}{}?track-id={}&play=false",
