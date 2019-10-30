@@ -118,15 +118,14 @@ impl AlbumSearch {
             .cached_albums
             .iter()
             .map(|album| {
-                format!(
-                    "{}: {} (year: {})",
-                    album.artist,
-                    album.title,
-                    album
-                        .year
-                        .map(|x| x.to_string())
-                        .unwrap_or_else(|| "unknown".to_string())
-                )
+                if let Some(ref version) = album.version {
+                    format!(
+                        "{}: {} (year: {}, {})",
+                        album.artist, album.title, album.year, version
+                    )
+                } else {
+                    format!("{}: {} (year: {})", album.artist, album.title, album.year)
+                }
             })
             .collect();
     }

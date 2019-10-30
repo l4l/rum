@@ -1,19 +1,50 @@
+use std::convert::{TryFrom, TryInto};
+
 use futures::future::TryFutureExt;
 use reqwest::Client;
 use snafu::ResultExt;
 use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
-#[derive(FromHtml, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Album {
-    #[html(selector = "div.album__title a.deco-link", attr = "href")]
     pub url: String,
-    #[html(selector = "div.album__title", attr = "inner")]
     pub title: String,
-    #[html(selector = "div.album__artist", attr = "inner")]
     pub artist: String,
+    pub year: u16,
+    pub version: Option<String>,
+}
+
+#[derive(FromHtml, Debug, Clone)]
+struct AlbumRaw {
+    #[html(selector = "div.album__title a.deco-link", attr = "href")]
+    url: String,
+    #[html(selector = "div.album__title", attr = "inner")]
+    title: String,
+    #[html(selector = "div.album__artist", attr = "inner")]
+    artist: String,
     #[html(selector = "div.album__year", attr = "inner")]
-    pub year: Option<u16>,
+    year_with_version: String,
+    #[html(selector = "div.album__year span.album__version", attr = "inner")]
+    version: Option<String>,
+}
+
+impl TryFrom<AlbumRaw> for Album {
+    type Error = ();
+
+    fn try_from(raw: AlbumRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            url: raw.url,
+            title: raw.title,
+            artist: raw.artist,
+            year: raw
+                .year_with_version
+                .replace(raw.version.as_deref().unwrap_or(""), "")
+                .parse()
+                .map_err(|_| ())?,
+            version: raw.version,
+        })
+    }
 }
 
 impl Album {
@@ -23,11 +54,28 @@ impl Album {
     }
 }
 
-#[derive(FromHtml, Debug)]
-#[html(selector = "div.serp-snippet__albums")]
+#[derive(Debug)]
 pub struct Albums {
-    #[html(selector = "div.album_selectable")]
     pub albums: Vec<Album>,
+}
+
+#[derive(FromHtml)]
+#[html(selector = "div.serp-snippet__albums")]
+struct AlbumsRaw {
+    #[html(selector = "div.album_selectable")]
+    albums: Vec<AlbumRaw>,
+}
+
+impl From<AlbumsRaw> for Albums {
+    fn from(raws: AlbumsRaw) -> Self {
+        Self {
+            albums: raws
+                .albums
+                .into_iter()
+                .filter_map(|raws| raws.try_into().ok())
+                .collect(),
+        }
+    }
 }
 
 #[derive(FromHtml, Debug, Clone)]
@@ -135,7 +183,11 @@ impl Provider {
             .and_then(|r| r.text())
             .await
             .context(HttpError { url })
-            .and_then(|body| Albums::from_html(&body).context(HtmlError {}))
+            .and_then(|body| {
+                AlbumsRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
     }
 
     pub async fn album_tracks(&self, album: &Album) -> Result<Tracks> {
