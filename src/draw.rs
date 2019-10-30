@@ -1,3 +1,5 @@
+use std::io::{stdout, Error, Stdout};
+
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -6,7 +8,7 @@ use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, List, Paragraph, Text, Widget};
 use tui::Terminal;
 
-type Backend = TermionBackend<RawTerminal<std::io::Stdout>>;
+type Backend = TermionBackend<RawTerminal<Stdout>>;
 
 pub struct Drawer {
     state: DrawState,
@@ -14,8 +16,8 @@ pub struct Drawer {
 }
 
 impl Drawer {
-    pub fn new() -> Result<Self, std::io::Error> {
-        let stdout = std::io::stdout().into_raw_mode()?;
+    pub fn new() -> Result<Self, Error> {
+        let stdout = stdout().into_raw_mode()?;
         let backend = TermionBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
 
@@ -38,7 +40,7 @@ impl Drawer {
         }
     }
 
-    pub fn update_state(&mut self, state: &app::State) -> Result<(), std::io::Error> {
+    pub fn update_state(&mut self, state: &app::State) -> Result<(), Error> {
         match &state.view {
             app::View::Start(buffer) => {
                 let mut s = AlbumSearch::new();
@@ -80,7 +82,7 @@ impl Drawer {
         }
     }
 
-    pub fn draw(&mut self) -> Result<(), std::io::Error> {
+    pub fn draw(&mut self) -> Result<(), Error> {
         match &self.state {
             DrawState::AlbumSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::TracksList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),

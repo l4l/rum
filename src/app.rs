@@ -1,9 +1,10 @@
 use std::sync::mpsc;
 
+use snafu::ResultExt;
 use termion::event::{Event, Key};
 use tokio::prelude::*;
 
-use crate::draw::Drawer;
+use crate::draw;
 use crate::player::Command;
 use crate::providers::{Album, Provider, Track};
 
@@ -142,6 +143,20 @@ impl Default for View {
     }
 }
 
+#[derive(Debug, snafu::Snafu)]
+pub enum Error {
+    #[snafu(display("player error at {:?}: {}", event, source))]
+    PlayerCommandError {
+        event: Key,
+        source: mpsc::SendError<Command>,
+    },
+    #[snafu(display("draw error at {}: {}", case, source))]
+    Drawer {
+        case: &'static str,
+        source: std::io::Error,
+    },
+}
+
 pub struct App {
     provider: Provider,
     player_commands: mpsc::Sender<Command>,
@@ -151,7 +166,7 @@ impl App {
     pub fn create(
         provider: Provider,
         player_commands: mpsc::Sender<Command>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Error> {
         Ok(Self {
             provider,
             player_commands,
@@ -183,34 +198,50 @@ impl App {
         rx
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self) -> Result<(), Error> {
         let App {
             provider,
             player_commands,
         } = self;
 
         let mut state = State::new(provider);
-        let mut drawer = Drawer::new()?;
+        let mut drawer = draw::Drawer::new().context(Drawer {
+            case: "create context",
+        })?;
         let mut events = App::events();
 
-        while let Some(ev) = events.next().await {
-            match ev {
+        while let Some(event) = events.next().await {
+            match event {
                 Key::Up => state.pointer_up(),
                 Key::Down => state.pointer_down(),
-                Key::Right => player_commands.send(Command::NextTrack)?,
-                Key::Left => player_commands.send(Command::PrevTrack)?,
+                Key::Right => player_commands
+                    .send(Command::NextTrack)
+                    .context(PlayerCommandError { event })?,
+                Key::Left => player_commands
+                    .send(Command::PrevTrack)
+                    .context(PlayerCommandError { event })?,
                 Key::Delete => return Ok(()),
-                Key::Ctrl('p') => player_commands.send(Command::Pause)?,
-                Key::Char(']') => player_commands.send(Command::Forward5)?,
-                Key::Char('[') => player_commands.send(Command::Backward5)?,
-                Key::Ctrl('r') => drawer.draw()?,
-                Key::Ctrl('s') => player_commands.send(Command::Stop)?,
+                Key::Ctrl('p') => player_commands
+                    .send(Command::Pause)
+                    .context(PlayerCommandError { event })?,
+                Key::Char(']') => player_commands
+                    .send(Command::Forward5)
+                    .context(PlayerCommandError { event })?,
+                Key::Char('[') => player_commands
+                    .send(Command::Backward5)
+                    .context(PlayerCommandError { event })?,
+                Key::Ctrl('r') => drawer.draw().context(Drawer { case: "redraw" })?,
+                Key::Ctrl('s') => player_commands
+                    .send(Command::Stop)
+                    .context(PlayerCommandError { event })?,
                 Key::Ctrl('a') => {
                     if let View::TrackSearch(ref search) = state.view {
                         for track in &search.cached_tracks {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
-                                    player_commands.send(Command::Enqueue(url))?;
+                                    player_commands
+                                        .send(Command::Enqueue(url))
+                                        .context(PlayerCommandError { event })?;
                                 }
                                 Err(err) => {
                                     log::error!("cannot get track {:?} url: {}", track, err);
@@ -221,11 +252,13 @@ impl App {
                 }
                 Key::Char('\n') => match state.action().await {
                     Ok(Some(cmd)) => {
-                        player_commands.send(cmd)?;
+                        player_commands
+                            .send(cmd)
+                            .context(PlayerCommandError { event })?;
                     }
                     Ok(_) => {}
                     Err(err) => {
-                        log::error!("cannot perform state action: {}", err);
+                        log::error!("cannot perform action {}", err);
                     }
                 },
                 Key::Char(c) => state.push_char(c),
@@ -235,7 +268,9 @@ impl App {
                 }
             }
 
-            drawer.update_state(&state)?;
+            drawer.update_state(&state).context(Drawer {
+                case: "loop update state",
+            })?;
         }
         Ok(())
     }
