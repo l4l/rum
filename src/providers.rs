@@ -1,19 +1,50 @@
+use std::convert::{TryFrom, TryInto};
+
 use futures::future::TryFutureExt;
 use reqwest::Client;
 use snafu::ResultExt;
 use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
-#[derive(FromHtml, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Album {
-    #[html(selector = "div.album__title a.deco-link", attr = "href")]
     pub url: String,
-    #[html(selector = "div.album__title", attr = "inner")]
     pub title: String,
-    #[html(selector = "div.album__artist", attr = "inner")]
     pub artist: String,
+    pub year: u16,
+    pub version: Option<String>,
+}
+
+#[derive(FromHtml, Debug, Clone)]
+struct AlbumRaw {
+    #[html(selector = "div.album__title a.deco-link", attr = "href")]
+    url: String,
+    #[html(selector = "div.album__title", attr = "inner")]
+    title: String,
+    #[html(selector = "div.album__artist", attr = "inner")]
+    artist: String,
     #[html(selector = "div.album__year", attr = "inner")]
-    pub year: Option<u16>,
+    year_with_version: String,
+    #[html(selector = "div.album__year span.album__version", attr = "inner")]
+    version: Option<String>,
+}
+
+impl TryFrom<AlbumRaw> for Album {
+    type Error = ();
+
+    fn try_from(raw: AlbumRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            url: raw.url,
+            title: raw.title,
+            artist: raw.artist,
+            year: raw
+                .year_with_version
+                .replace(raw.version.as_deref().unwrap_or(""), "")
+                .parse()
+                .map_err(|_| ())?,
+            version: raw.version,
+        })
+    }
 }
 
 impl Album {
@@ -23,39 +54,90 @@ impl Album {
     }
 }
 
-#[derive(FromHtml, Debug)]
-#[html(selector = "div.serp-snippet__albums")]
+#[derive(Debug)]
 pub struct Albums {
-    #[html(selector = "div.album_selectable")]
     pub albums: Vec<Album>,
 }
 
-#[derive(FromHtml, Debug, Clone)]
-pub struct Track {
-    #[html(selector = "div.d-track__name a.d-track__title", attr = "href")]
-    pub url: String,
-    #[html(selector = "div.d-track__name a.d-track__title", attr = "inner")]
-    pub name: String,
+#[derive(FromHtml)]
+#[html(selector = "div.serp-snippet__albums")]
+struct AlbumsRaw {
+    #[html(selector = "div.album_selectable")]
+    albums: Vec<AlbumRaw>,
 }
 
-impl Track {
-    fn id(&self) -> (u32, u32) {
-        // `/album/4766/track/57703`
-        let mut iter = self.url.split('/');
-        iter.next();
-        iter.next();
-        let album_id = iter.next().unwrap().parse().unwrap();
-        iter.next();
-        let track_id = iter.next().unwrap().parse().unwrap();
-        (album_id, track_id)
+impl From<AlbumsRaw> for Albums {
+    fn from(raws: AlbumsRaw) -> Self {
+        Self {
+            albums: raws
+                .albums
+                .into_iter()
+                .filter_map(|raws| raws.try_into().ok())
+                .collect(),
+        }
     }
 }
 
-#[derive(FromHtml, Debug)]
-#[html(selector = "div.lightlist")]
+#[derive(Debug, Clone)]
+pub struct Track {
+    pub album_id: u32,
+    pub track_id: u32,
+    pub name: String,
+}
+
+#[derive(FromHtml)]
+struct TrackRaw {
+    #[html(selector = "div.d-track__name a.d-track__title", attr = "href")]
+    url: Option<String>,
+    #[html(selector = "div.d-track__name a.d-track__title", attr = "inner")]
+    name: Option<String>,
+}
+
+impl TryFrom<TrackRaw> for Track {
+    type Error = ();
+
+    fn try_from(raw: TrackRaw) -> std::result::Result<Self, Self::Error> {
+        // `/album/4766/track/57703`
+        let url = raw.url.ok_or(())?;
+        let name = raw.name.ok_or(())?;
+        let mut iter = url.split('/');
+        iter.next();
+        let mut parse_int = move || {
+            iter.next();
+            iter.next().and_then(|val| val.parse().ok()).ok_or(())
+        };
+        let album_id = parse_int()?;
+        let track_id = parse_int()?;
+        Ok(Self {
+            album_id,
+            track_id,
+            name,
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct Tracks {
-    #[html(selector = "div.d-track__name")]
     pub tracks: Vec<Track>,
+}
+
+#[derive(FromHtml)]
+#[html(selector = "div.lightlist")]
+struct TracksRaw {
+    #[html(selector = "div.d-track__name")]
+    tracks: Vec<TrackRaw>,
+}
+
+impl From<TracksRaw> for Tracks {
+    fn from(raws: TracksRaw) -> Self {
+        Self {
+            tracks: raws
+                .tracks
+                .into_iter()
+                .filter_map(|track| track.try_into().ok())
+                .collect(),
+        }
+    }
 }
 
 const BASE_URL: &str = "https://music.yandex.ru";
@@ -135,7 +217,11 @@ impl Provider {
             .and_then(|r| r.text())
             .await
             .context(HttpError { url })
-            .and_then(|body| Albums::from_html(&body).context(HtmlError {}))
+            .and_then(|body| {
+                AlbumsRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
     }
 
     pub async fn album_tracks(&self, album: &Album) -> Result<Tracks> {
@@ -147,19 +233,22 @@ impl Provider {
             .and_then(|r| r.text())
             .await
             .context(HttpError { url })
-            .and_then(|body| Tracks::from_html(&body).context(HtmlError {}))
+            .and_then(|body| {
+                TracksRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
     }
 
     pub async fn get_track_url(&self, track: &Track) -> Result<String> {
-        let (album_id, track_id) = track.id();
-        let url = format!("https://music.yandex.ru/api/v2.1/handlers/track/{}:{}/web-album-track-track-saved/download/m", track_id, album_id);
+        let url = format!("https://music.yandex.ru/api/v2.1/handlers/track/{}:{}/web-album-track-track-saved/download/m", track.track_id, track.album_id);
 
         let url = self
             .client
             .get(&url)
             .header(
                 "X-Retpath-Y",
-                format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", album_id),
+                format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", track.album_id),
             )
             .send()
             .and_then(|r| r.text())
@@ -185,7 +274,7 @@ impl Provider {
 
         Ok(format!(
             "https://{}/get-mp3/11111111111111111111111111111111/{}{}?track-id={}&play=false",
-            info.host, info.ts, info.path, track_id
+            info.host, info.ts, info.path, track.track_id
         ))
     }
 }
