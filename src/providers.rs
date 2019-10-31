@@ -244,6 +244,22 @@ impl Provider {
             })
     }
 
+    pub async fn track_search(&self, text: &str) -> Result<Tracks> {
+        let url = SearchType::Tracks.search_url(text);
+
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| {
+                TracksRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
+    }
+
     pub async fn album_tracks(&self, album: &Album) -> Result<Tracks> {
         let url = format!("{}{}", BASE_URL, album.url);
 

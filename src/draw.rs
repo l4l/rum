@@ -36,17 +36,21 @@ impl Drawer {
     pub fn update_pointer(&mut self, pointer: usize) {
         match &mut self.state {
             DrawState::AlbumSearch(search) => search.cursor = pointer,
-            DrawState::TracksList(search) => search.cursor = pointer,
+            DrawState::TrackSearch(_) => {}
+            DrawState::TrackList(list) => list.cursor = pointer,
         }
     }
 
     pub fn update_state(&mut self, state: &app::State) -> Result<(), Error> {
         match &state.view {
             app::View::AlbumSearch(search) => {
-                self.reset_to_album_search().update_albums(&search);
+                self.reset_to_album_search().update(&search);
             }
             app::View::TrackSearch(search) => {
-                self.reset_to_track_search().update_tracks(&search);
+                self.reset_to_track_search().update(&search);
+            }
+            app::View::TrackList(list) => {
+                self.reset_to_track_list().update(&list);
             }
         }
         self.update_pointer(state.pointer);
@@ -65,12 +69,24 @@ impl Drawer {
         }
     }
 
-    fn reset_to_track_search(&mut self) -> &mut TracksList {
-        if let DrawState::TracksList(ref mut this) = self.state {
+    fn reset_to_track_search(&mut self) -> &mut TrackSearch {
+        if let DrawState::TrackSearch(ref mut this) = self.state {
             return this;
         }
-        self.state = DrawState::TracksList(TracksList::new());
-        if let DrawState::TracksList(ref mut this) = &mut self.state {
+        self.state = DrawState::TrackSearch(TrackSearch::new());
+        if let DrawState::TrackSearch(ref mut this) = &mut self.state {
+            this
+        } else {
+            unreachable!()
+        }
+    }
+
+    fn reset_to_track_list(&mut self) -> &mut TrackList {
+        if let DrawState::TrackList(ref mut this) = self.state {
+            return this;
+        }
+        self.state = DrawState::TrackList(TrackList::new());
+        if let DrawState::TrackList(ref mut this) = &mut self.state {
             this
         } else {
             unreachable!()
@@ -80,14 +96,16 @@ impl Drawer {
     pub fn draw(&mut self) -> Result<(), Error> {
         match &self.state {
             DrawState::AlbumSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
-            DrawState::TracksList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
+            DrawState::TrackSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
+            DrawState::TrackList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
         }
     }
 }
 
 enum DrawState {
     AlbumSearch(AlbumSearch),
-    TracksList(TracksList),
+    TrackSearch(TrackSearch),
+    TrackList(TrackList),
 }
 
 struct AlbumSearch {
@@ -107,7 +125,7 @@ impl AlbumSearch {
         }
     }
 
-    fn update_albums(&mut self, albums: &app::AlbumSearch) {
+    fn update(&mut self, albums: &app::AlbumSearch) {
         self.insert_buffer = albums.insert_buffer.clone();
         self.album_infos = albums
             .cached_albums
@@ -156,12 +174,50 @@ impl AlbumSearch {
     }
 }
 
-struct TracksList {
+struct TrackSearch {
+    insert_buffer: String,
+}
+
+impl TrackSearch {
+    fn new() -> Self {
+        Self {
+            insert_buffer: String::with_capacity(256),
+        }
+    }
+
+    fn update(&mut self, albums: &app::TrackSearch) {
+        self.insert_buffer = albums.insert_buffer.clone();
+    }
+
+    fn draw(&self, mut frame: &mut Frame<Backend>) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
+            .split(frame.size());
+        let texts = [Text::styled(
+            &self.insert_buffer,
+            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
+        )];
+        Paragraph::new(texts.iter())
+            .block(
+                Block::default()
+                    .title("Track Search String")
+                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
+                    .borders(Borders::ALL),
+            )
+            .alignment(Alignment::Center)
+            .wrap(true)
+            .render(&mut frame, chunks[0]);
+    }
+}
+
+struct TrackList {
     cursor: usize,
     tracks: Vec<String>,
 }
 
-impl TracksList {
+impl TrackList {
     fn new() -> Self {
         Self {
             cursor: 0,
@@ -169,7 +225,7 @@ impl TracksList {
         }
     }
 
-    fn update_tracks(&mut self, tracks: &app::TrackSearch) {
+    fn update(&mut self, tracks: &app::TrackList) {
         self.tracks = tracks
             .cached_tracks
             .iter()
@@ -185,7 +241,7 @@ impl TracksList {
             .split(frame.size());
 
         List::new(cursored_line(self.tracks.iter(), self.cursor, chunks[1]))
-            .block(Block::default().title("Tracks").borders(Borders::ALL))
+            .block(Block::default().title("Found Tracks").borders(Borders::ALL))
             .render(&mut frame, chunks[1]);
     }
 }
