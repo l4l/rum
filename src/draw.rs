@@ -42,11 +42,6 @@ impl Drawer {
 
     pub fn update_state(&mut self, state: &app::State) -> Result<(), Error> {
         match &state.view {
-            app::View::Start(buffer) => {
-                let mut s = AlbumSearch::new();
-                s.insert_buffer = buffer.clone();
-                self.state = DrawState::AlbumSearch(s);
-            }
             app::View::AlbumSearch(search) => {
                 self.reset_to_album_search().update_albums(&search);
             }

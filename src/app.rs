@@ -41,7 +41,6 @@ impl State {
         let len = match &self.view {
             AlbumSearch(search) => search.cached_albums.len(),
             TrackSearch(search) => search.cached_tracks.len(),
-            _ => return,
         };
         if len != 0 && self.pointer < len - 1 {
             self.pointer += 1;
@@ -55,15 +54,13 @@ impl State {
                     self.pointer -= 1;
                 }
             }
-            _ => {}
         }
     }
 
     fn push_char(&mut self, c: char) {
         use View::*;
         match &mut self.view {
-            Start(buffer)
-            | AlbumSearch(self::AlbumSearch {
+            AlbumSearch(self::AlbumSearch {
                 insert_buffer: buffer,
                 ..
             }) => buffer.push(c),
@@ -74,8 +71,7 @@ impl State {
     fn backspace(&mut self) {
         use View::*;
         match &mut self.view {
-            Start(buffer)
-            | AlbumSearch(self::AlbumSearch {
+            AlbumSearch(self::AlbumSearch {
                 insert_buffer: buffer,
                 ..
             }) => {
@@ -94,13 +90,6 @@ impl State {
     async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
         use View::*;
         match &mut self.view {
-            Start(buffer) => {
-                self.pointer = 0;
-                self.view = AlbumSearch(self::AlbumSearch {
-                    insert_buffer: String::new(),
-                    cached_albums: self.provider.album_search(&buffer).await?.albums,
-                });
-            }
             AlbumSearch(search) if !search.insert_buffer.is_empty() => {
                 search.cached_albums = self
                     .provider
@@ -112,7 +101,7 @@ impl State {
             AlbumSearch(search)
                 if search.insert_buffer.is_empty() && !search.cached_albums.is_empty() =>
             {
-                self.prev_view = Some((self.pointer, View::AlbumSearch(search.clone())));
+                self.prev_view = Some((self.pointer, AlbumSearch(search.clone())));
                 let album = &search.cached_albums[self.pointer];
                 self.pointer = 0;
                 self.view = TrackSearch(self::TrackSearch {
@@ -132,14 +121,16 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum View {
-    Start(String),
     AlbumSearch(AlbumSearch),
     TrackSearch(TrackSearch),
 }
 
 impl Default for View {
     fn default() -> Self {
-        View::Start(String::with_capacity(256))
+        View::AlbumSearch(AlbumSearch {
+            insert_buffer: String::with_capacity(256),
+            cached_albums: vec![],
+        })
     }
 }
 
