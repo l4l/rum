@@ -16,12 +16,13 @@ export PATH=$PATH:~/.cargo/bin
 rum-player
 ```
 
-Currently, the tool has 2 main windows: album search and list album tracks.
+Currently, the tool has 2 main views: search panel and tracks listing.
 Hotkeys are currently cannot be configured and are the following:
 
 - Arrow Up/Down - scroll up/down displayed list;
 - Left/Right - switch to previous/next track;
-- Backspace (at track list view) - display back to album search panel;
+- Backspace (at track list view) - display back to search panel;
+- Tab - switch between search types (currently track & album search are available);
 - Ctrl+a (at track list view) - add all tracks to playlist;
 - Ctrl+r - redraw screen (might be helpful after resizing);
 - Ctrl+s - stop playback and clear playlist;
