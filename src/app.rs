@@ -16,6 +16,11 @@ pub struct AlbumSearch {
 
 #[derive(Debug, Clone)]
 pub struct TrackSearch {
+    pub insert_buffer: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrackList {
     pub cached_tracks: Vec<Track>,
 }
 
@@ -40,8 +45,8 @@ impl State {
         use View::*;
         let len = match &self.view {
             AlbumSearch(search) => search.cached_albums.len(),
-            TrackSearch(search) => search.cached_tracks.len(),
-            _ => return,
+            TrackSearch(_) => return,
+            TrackList(search) => search.cached_tracks.len(),
         };
         if len != 0 && self.pointer < len - 1 {
             self.pointer += 1;
@@ -50,38 +55,31 @@ impl State {
     fn pointer_up(&mut self) {
         use View::*;
         match &self.view {
-            AlbumSearch(_) | TrackSearch(_) => {
+            AlbumSearch(_) | TrackSearch(_) | TrackList(_) => {
                 if self.pointer > 0 {
                     self.pointer -= 1;
                 }
             }
-            _ => {}
         }
     }
 
     fn push_char(&mut self, c: char) {
         use View::*;
         match &mut self.view {
-            Start(buffer)
-            | AlbumSearch(self::AlbumSearch {
-                insert_buffer: buffer,
-                ..
-            }) => buffer.push(c),
-            TrackSearch(_) => {}
+            AlbumSearch(self::AlbumSearch { insert_buffer, .. })
+            | TrackSearch(self::TrackSearch { insert_buffer }) => insert_buffer.push(c),
+            TrackList(_) => {}
         }
     }
 
     fn backspace(&mut self) {
         use View::*;
         match &mut self.view {
-            Start(buffer)
-            | AlbumSearch(self::AlbumSearch {
-                insert_buffer: buffer,
-                ..
-            }) => {
-                buffer.pop();
+            AlbumSearch(self::AlbumSearch { insert_buffer, .. })
+            | TrackSearch(self::TrackSearch { insert_buffer }) => {
+                insert_buffer.pop();
             }
-            TrackSearch(_) => {
+            TrackList(_) => {
                 if let Some((pointer, previous)) = self.prev_view.take() {
                     log::debug!("restoring prev_view with pointer: {}", pointer);
                     self.pointer = pointer;
@@ -94,17 +92,10 @@ impl State {
     async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
         use View::*;
         match &mut self.view {
-            Start(buffer) => {
-                self.pointer = 0;
-                self.view = AlbumSearch(self::AlbumSearch {
-                    insert_buffer: String::new(),
-                    cached_albums: self.provider.text_search(&buffer).await?.albums,
-                });
-            }
             AlbumSearch(search) if !search.insert_buffer.is_empty() => {
                 search.cached_albums = self
                     .provider
-                    .text_search(&search.insert_buffer)
+                    .album_search(&search.insert_buffer)
                     .await?
                     .albums;
                 search.insert_buffer.clear();
@@ -112,14 +103,27 @@ impl State {
             AlbumSearch(search)
                 if search.insert_buffer.is_empty() && !search.cached_albums.is_empty() =>
             {
-                self.prev_view = Some((self.pointer, View::AlbumSearch(search.clone())));
+                self.prev_view = Some((self.pointer, AlbumSearch(search.clone())));
                 let album = &search.cached_albums[self.pointer];
                 self.pointer = 0;
-                self.view = TrackSearch(self::TrackSearch {
+                self.view = TrackList(self::TrackList {
                     cached_tracks: self.provider.album_tracks(&album).await?.tracks,
                 });
             }
             TrackSearch(search) => {
+                let tracks = self
+                    .provider
+                    .track_search(&search.insert_buffer)
+                    .await?
+                    .tracks;
+                if !tracks.is_empty() {
+                    self.prev_view = Some((self.pointer, TrackSearch(search.clone())));
+                    self.view = TrackList(self::TrackList {
+                        cached_tracks: tracks,
+                    })
+                }
+            }
+            TrackList(search) => {
                 let track = &search.cached_tracks[self.pointer];
                 let url = self.provider.get_track_url(&track).await?;
                 return Ok(Some(Command::Enqueue(url)));
@@ -132,14 +136,17 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum View {
-    Start(String),
     AlbumSearch(AlbumSearch),
     TrackSearch(TrackSearch),
+    TrackList(TrackList),
 }
 
 impl Default for View {
     fn default() -> Self {
-        View::Start(String::with_capacity(256))
+        View::AlbumSearch(AlbumSearch {
+            insert_buffer: String::with_capacity(256),
+            cached_albums: vec![],
+        })
     }
 }
 
@@ -235,7 +242,7 @@ impl App {
                     .send(Command::Stop)
                     .context(PlayerCommandError { event })?,
                 Key::Ctrl('a') => {
-                    if let View::TrackSearch(ref search) = state.view {
+                    if let View::TrackList(ref search) = state.view {
                         for track in &search.cached_tracks {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
@@ -261,6 +268,18 @@ impl App {
                         log::error!("cannot perform action {}", err);
                     }
                 },
+                Key::Char('\t') => {
+                    state.view = match state.view {
+                        View::AlbumSearch(search) => View::TrackSearch(TrackSearch {
+                            insert_buffer: search.insert_buffer,
+                        }),
+                        View::TrackSearch(search) => View::AlbumSearch(AlbumSearch {
+                            insert_buffer: search.insert_buffer,
+                            cached_albums: vec![],
+                        }),
+                        _ => continue,
+                    }
+                }
                 Key::Char(c) => state.push_char(c),
                 Key::Backspace => state.backspace(),
                 _ => {

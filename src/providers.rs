@@ -3,6 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use futures::future::TryFutureExt;
 use reqwest::Client;
 use snafu::ResultExt;
+use strum_macros::Display;
 use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
@@ -122,7 +123,7 @@ pub struct Tracks {
 }
 
 #[derive(FromHtml)]
-#[html(selector = "div.lightlist")]
+#[html(selector = "div.d-track__overflowable-wrapper")]
 struct TracksRaw {
     #[html(selector = "div.d-track__name")]
     tracks: Vec<TrackRaw>,
@@ -200,6 +201,26 @@ pub struct Provider {
     client: Client,
 }
 
+#[derive(Display, Clone, Copy)]
+#[strum(serialize_all = "snake_case")]
+#[allow(unused)]
+enum SearchType {
+    Albums,
+    Tracks,
+    Artists,
+}
+
+impl SearchType {
+    fn search_url(self, search_text: &str) -> String {
+        format!(
+            "{}/search?text={}&type={}",
+            BASE_URL,
+            search_text, // TODO: url encode
+            self.to_string()
+        )
+    }
+}
+
 impl Provider {
     pub fn new() -> Self {
         Self {
@@ -207,9 +228,8 @@ impl Provider {
         }
     }
 
-    pub async fn text_search(&self, text: &str) -> Result<Albums> {
-        const SEARCH_TYPE: &str = "albums"; // FIXME: paramterize
-        let url = format!("{}/search?text={}&type={}", BASE_URL, text, SEARCH_TYPE);
+    pub async fn album_search(&self, text: &str) -> Result<Albums> {
+        let url = SearchType::Albums.search_url(text);
 
         self.client
             .get(&url)
@@ -219,6 +239,22 @@ impl Provider {
             .context(HttpError { url })
             .and_then(|body| {
                 AlbumsRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
+    }
+
+    pub async fn track_search(&self, text: &str) -> Result<Tracks> {
+        let url = SearchType::Tracks.search_url(text);
+
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| {
+                TracksRaw::from_html(&body)
                     .map(Into::into)
                     .context(HtmlError {})
             })
@@ -276,5 +312,17 @@ impl Provider {
             "https://{}/get-mp3/11111111111111111111111111111111/{}{}?track-id={}&play=false",
             info.host, info.ts, info.path, track.track_id
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_type_string() {
+        assert_eq!(SearchType::Albums.to_string(), "albums");
+        assert_eq!(SearchType::Tracks.to_string(), "tracks");
+        assert_eq!(SearchType::Artists.to_string(), "artists");
     }
 }
