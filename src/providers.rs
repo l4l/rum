@@ -123,7 +123,7 @@ pub struct Tracks {
 }
 
 #[derive(FromHtml)]
-#[html(selector = "div.lightlist")]
+#[html(selector = "div.d-track__overflowable-wrapper")]
 struct TracksRaw {
     #[html(selector = "div.d-track__name")]
     tracks: Vec<TrackRaw>,
