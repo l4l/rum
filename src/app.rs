@@ -98,13 +98,13 @@ impl State {
                 self.pointer = 0;
                 self.view = AlbumSearch(self::AlbumSearch {
                     insert_buffer: String::new(),
-                    cached_albums: self.provider.text_search(&buffer).await?.albums,
+                    cached_albums: self.provider.album_search(&buffer).await?.albums,
                 });
             }
             AlbumSearch(search) if !search.insert_buffer.is_empty() => {
                 search.cached_albums = self
                     .provider
-                    .text_search(&search.insert_buffer)
+                    .album_search(&search.insert_buffer)
                     .await?
                     .albums;
                 search.insert_buffer.clear();

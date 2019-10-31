@@ -26,6 +26,8 @@ log = "0.4.8"
 flexi_logger = "0.14.4"
 snafu = "0.5.0"
 futures-preview = "0.3.0-alpha.19"
+strum = "0.16.0"
+strum_macros = "0.16.0"
 
 [badges]
 travis-ci = { repository = "l4l/rum" }
