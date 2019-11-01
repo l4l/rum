@@ -35,6 +35,7 @@ impl Drawer {
 
     pub fn update_pointer(&mut self, pointer: usize) {
         match &mut self.state {
+            DrawState::ArtistSearch(search) => search.cursor = pointer,
             DrawState::AlbumSearch(search) => search.cursor = pointer,
             DrawState::TrackSearch(_) => {}
             DrawState::TrackList(list) => list.cursor = pointer,
@@ -43,6 +44,9 @@ impl Drawer {
 
     pub fn update_state(&mut self, state: &app::State) -> Result<(), Error> {
         match &state.view {
+            app::View::ArtistSearch(search) => {
+                self.reset_to_artist_search().update(&search);
+            }
             app::View::AlbumSearch(search) => {
                 self.reset_to_album_search().update(&search);
             }
@@ -55,6 +59,18 @@ impl Drawer {
         }
         self.update_pointer(state.pointer);
         self.draw()
+    }
+
+    fn reset_to_artist_search(&mut self) -> &mut ArtistSearch {
+        if let DrawState::ArtistSearch(ref mut this) = self.state {
+            return this;
+        }
+        self.state = DrawState::ArtistSearch(ArtistSearch::new());
+        if let DrawState::ArtistSearch(ref mut this) = &mut self.state {
+            this
+        } else {
+            unreachable!()
+        }
     }
 
     fn reset_to_album_search(&mut self) -> &mut AlbumSearch {
@@ -95,6 +111,7 @@ impl Drawer {
 
     pub fn draw(&mut self) -> Result<(), Error> {
         match &self.state {
+            DrawState::ArtistSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::AlbumSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::TrackSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::TrackList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
@@ -103,9 +120,65 @@ impl Drawer {
 }
 
 enum DrawState {
+    ArtistSearch(ArtistSearch),
     AlbumSearch(AlbumSearch),
     TrackSearch(TrackSearch),
     TrackList(TrackList),
+}
+
+struct ArtistSearch {
+    insert_buffer: String,
+    cursor: usize,
+    artist_infos: Vec<String>,
+}
+
+impl ArtistSearch {
+    fn new() -> Self {
+        Self {
+            insert_buffer: String::with_capacity(256),
+            cursor: 0,
+            artist_infos: Vec::new(),
+        }
+    }
+
+    fn update(&mut self, artists: &app::ArtistSearch) {
+        self.insert_buffer = artists.insert_buffer.clone();
+        self.artist_infos = artists
+            .cached_artists
+            .iter()
+            .map(|album| album.name.clone())
+            .collect();
+    }
+
+    fn draw(&self, mut frame: &mut Frame<Backend>) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
+            .split(frame.size());
+        let texts = [Text::styled(
+            &self.insert_buffer,
+            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
+        )];
+        Paragraph::new(texts.iter())
+            .block(
+                Block::default()
+                    .title("Artist Search String")
+                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
+                    .borders(Borders::ALL),
+            )
+            .alignment(Alignment::Center)
+            .wrap(true)
+            .render(&mut frame, chunks[0]);
+
+        List::new(cursored_line(
+            self.artist_infos.iter(),
+            self.cursor,
+            chunks[1],
+        ))
+        .block(Block::default().title("Artists").borders(Borders::ALL))
+        .render(&mut frame, chunks[1]);
+    }
 }
 
 struct AlbumSearch {

@@ -8,6 +8,58 @@ use unhtml::{self, FromHtml};
 use unhtml_derive::*;
 
 #[derive(Debug, Clone)]
+pub struct Artist {
+    pub url: String,
+    pub name: String,
+}
+
+#[derive(FromHtml)]
+struct ArtistRaw {
+    #[allow(unused)]
+    #[html(selector = "div.artist__cover img.artist-pics__pic", attr = "src")]
+    images: String,
+    #[html(selector = "div.artist__name a.d-link", attr = "href")]
+    url: String,
+    #[html(selector = "div.artist__name a.d-link", attr = "inner")]
+    name: String,
+}
+
+impl TryFrom<ArtistRaw> for Artist {
+    type Error = ();
+
+    fn try_from(raw: ArtistRaw) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            url: raw.url,
+            name: raw.name,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Artists {
+    pub artists: Vec<Artist>,
+}
+
+#[derive(FromHtml)]
+#[html(selector = "div.serp-snippet__artists")]
+struct ArtistsRaw {
+    #[html(selector = "div.artist__content")]
+    artists: Vec<ArtistRaw>,
+}
+
+impl From<ArtistsRaw> for Artists {
+    fn from(raw: ArtistsRaw) -> Self {
+        Self {
+            artists: raw
+                .artists
+                .into_iter()
+                .filter_map(|artist| artist.try_into().ok())
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Album {
     pub url: String,
     pub title: String,
@@ -16,7 +68,7 @@ pub struct Album {
     pub version: Option<String>,
 }
 
-#[derive(FromHtml, Debug, Clone)]
+#[derive(FromHtml)]
 struct AlbumRaw {
     #[html(selector = "div.album__title a.deco-link", attr = "href")]
     url: String,
@@ -61,7 +113,7 @@ pub struct Albums {
 }
 
 #[derive(FromHtml)]
-#[html(selector = "div.serp-snippet__albums")]
+#[html(selector = "div.centerblock")]
 struct AlbumsRaw {
     #[html(selector = "div.album_selectable")]
     albums: Vec<AlbumRaw>,
@@ -123,7 +175,7 @@ pub struct Tracks {
 }
 
 #[derive(FromHtml)]
-#[html(selector = "div.d-track__overflowable-wrapper")]
+#[html(selector = "div.d-track")]
 struct TracksRaw {
     #[html(selector = "div.d-track__name")]
     tracks: Vec<TrackRaw>,
@@ -203,7 +255,6 @@ pub struct Provider {
 
 #[derive(Display, Clone, Copy)]
 #[strum(serialize_all = "snake_case")]
-#[allow(unused)]
 enum SearchType {
     Albums,
     Tracks,
@@ -226,6 +277,54 @@ impl Provider {
         Self {
             client: Client::new(),
         }
+    }
+
+    pub async fn artists_search(&self, text: &str) -> Result<Artists> {
+        let url = SearchType::Artists.search_url(text);
+
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| {
+                ArtistsRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
+    }
+
+    pub async fn artist_albums(&self, artist: &Artist) -> Result<Albums> {
+        let url = format!("{}{}/albums", BASE_URL, artist.url);
+
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| {
+                AlbumsRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
+    }
+
+    pub async fn artist_tracks(&self, artist: &Artist) -> Result<Tracks> {
+        let url = format!("{}{}/tracks", BASE_URL, artist.url);
+
+        self.client
+            .get(&url)
+            .send()
+            .and_then(|r| r.text())
+            .await
+            .context(HttpError { url })
+            .and_then(|body| {
+                TracksRaw::from_html(&body)
+                    .map(Into::into)
+                    .context(HtmlError {})
+            })
     }
 
     pub async fn album_search(&self, text: &str) -> Result<Albums> {
