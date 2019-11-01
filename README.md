@@ -26,6 +26,8 @@ Hotkeys are currently cannot be configured and are the following:
 - Ctrl+a (at track list view) - add all tracks to playlist;
 - Ctrl+r - redraw screen (might be helpful after resizing);
 - Ctrl+s - stop playback and clear playlist;
+- Alt+a (at artist search) - switch to artist albums;
+- Alt+t (at artist search) - switch to artist tracks;
 - Space - pause/unpause currently played track;
 - [ - skip 5 seconds forward of currently played track;
 - ] - skip 5 seconds backward of currently played track;
