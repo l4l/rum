@@ -6,7 +6,13 @@ use tokio::prelude::*;
 
 use crate::draw;
 use crate::player::Command;
-use crate::providers::{Album, Provider, Track};
+use crate::providers::{Album, Artist, Provider, Track};
+
+#[derive(Debug, Clone)]
+pub struct ArtistSearch {
+    pub insert_buffer: String,
+    pub cached_artists: Vec<Artist>,
+}
 
 #[derive(Debug, Clone)]
 pub struct AlbumSearch {
@@ -44,6 +50,7 @@ impl State {
     fn pointer_down(&mut self) {
         use View::*;
         let len = match &self.view {
+            ArtistSearch(search) => search.cached_artists.len(),
             AlbumSearch(search) => search.cached_albums.len(),
             TrackSearch(_) => return,
             TrackList(search) => search.cached_tracks.len(),
@@ -55,7 +62,7 @@ impl State {
     fn pointer_up(&mut self) {
         use View::*;
         match &self.view {
-            AlbumSearch(_) | TrackSearch(_) | TrackList(_) => {
+            ArtistSearch(_) | AlbumSearch(_) | TrackSearch(_) | TrackList(_) => {
                 if self.pointer > 0 {
                     self.pointer -= 1;
                 }
@@ -66,7 +73,8 @@ impl State {
     fn push_char(&mut self, c: char) {
         use View::*;
         match &mut self.view {
-            AlbumSearch(self::AlbumSearch { insert_buffer, .. })
+            ArtistSearch(self::ArtistSearch { insert_buffer, .. })
+            | AlbumSearch(self::AlbumSearch { insert_buffer, .. })
             | TrackSearch(self::TrackSearch { insert_buffer }) => insert_buffer.push(c),
             TrackList(_) => {}
         }
@@ -75,7 +83,8 @@ impl State {
     fn backspace(&mut self) {
         use View::*;
         match &mut self.view {
-            AlbumSearch(self::AlbumSearch { insert_buffer, .. })
+            ArtistSearch(self::ArtistSearch { insert_buffer, .. })
+            | AlbumSearch(self::AlbumSearch { insert_buffer, .. })
             | TrackSearch(self::TrackSearch { insert_buffer }) => {
                 insert_buffer.pop();
             }
@@ -89,9 +98,48 @@ impl State {
         }
     }
 
+    async fn artist_album_search(&mut self) -> Result<(), crate::providers::Error> {
+        if let View::ArtistSearch(search) = &self.view {
+            if self.pointer < search.cached_artists.len() {
+                self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
+                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                self.pointer = 0;
+                let albums = self.provider.artist_albums(&artist).await?.albums;
+                self.view = View::AlbumSearch(AlbumSearch {
+                    insert_buffer: String::with_capacity(256),
+                    cached_albums: albums,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    async fn artist_track_search(&mut self) -> Result<(), crate::providers::Error> {
+        if let View::ArtistSearch(search) = &self.view {
+            if self.pointer < search.cached_artists.len() {
+                self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
+                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                self.pointer = 0;
+                let tracks = self.provider.artist_tracks(&artist).await?.tracks;
+                self.view = View::TrackList(TrackList {
+                    cached_tracks: tracks,
+                });
+            }
+        }
+        Ok(())
+    }
+
     async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
         use View::*;
         match &mut self.view {
+            ArtistSearch(search) => {
+                search.cached_artists = self
+                    .provider
+                    .artists_search(&search.insert_buffer)
+                    .await?
+                    .artists;
+                search.insert_buffer.clear();
+            }
             AlbumSearch(search) if !search.insert_buffer.is_empty() => {
                 search.cached_albums = self
                     .provider
@@ -136,6 +184,7 @@ impl State {
 
 #[derive(Debug, Clone)]
 pub enum View {
+    ArtistSearch(ArtistSearch),
     AlbumSearch(AlbumSearch),
     TrackSearch(TrackSearch),
     TrackList(TrackList),
@@ -257,6 +306,16 @@ impl App {
                         }
                     }
                 }
+                Key::Alt('a') => {
+                    if let Err(err) = state.artist_album_search().await {
+                        log::error!("cannot fetch artist albums: {}", err);
+                    }
+                }
+                Key::Alt('t') => {
+                    if let Err(err) = state.artist_track_search().await {
+                        log::error!("cannot fetch artist tracks: {}", err);
+                    }
+                }
                 Key::Char('\n') => match state.action().await {
                     Ok(Some(cmd)) => {
                         player_commands
@@ -273,7 +332,11 @@ impl App {
                         View::AlbumSearch(search) => View::TrackSearch(TrackSearch {
                             insert_buffer: search.insert_buffer,
                         }),
-                        View::TrackSearch(search) => View::AlbumSearch(AlbumSearch {
+                        View::TrackSearch(search) => View::ArtistSearch(ArtistSearch {
+                            insert_buffer: search.insert_buffer,
+                            cached_artists: vec![],
+                        }),
+                        View::ArtistSearch(search) => View::AlbumSearch(AlbumSearch {
                             insert_buffer: search.insert_buffer,
                             cached_albums: vec![],
                         }),
