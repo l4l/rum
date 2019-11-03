@@ -5,8 +5,9 @@ use termion::event::{Event, Key};
 use tokio::prelude::*;
 
 use crate::draw;
+use crate::meta::{Album, Artist, Track};
 use crate::player::Command;
-use crate::providers::{Album, Artist, Provider, Track};
+use crate::providers::Provider;
 
 #[derive(Debug, Clone)]
 pub struct ArtistSearch {
