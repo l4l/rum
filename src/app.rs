@@ -375,7 +375,7 @@ impl App {
                 Key::Left => player_commands
                     .send(Command::PrevTrack)
                     .context(PlayerCommandError { event })?,
-                Key::Delete => return Ok(()),
+                Key::Ctrl('c') | Key::Delete => return Ok(()),
                 Key::Ctrl('p') => player_commands
                     .send(Command::Pause)
                     .context(PlayerCommandError { event })?,
