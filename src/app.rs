@@ -139,45 +139,84 @@ impl State {
         }
     }
 
-    async fn artist_album_search(&mut self) -> Result<(), crate::providers::Error> {
-        if let View::ArtistSearch(search) = &self.view {
-            if search.cursor < search.cached_artists.len() {
-                self.prev_view = Some(View::ArtistSearch(search.clone()));
-                let artist = &search.cached_artists[search.cursor];
-                let albums = self.provider.artist_albums(&artist).await?.albums;
-                self.view = View::AlbumSearch(AlbumSearch {
-                    insert_buffer: String::with_capacity(256),
-                    cached_albums: albums,
-                    cursor: 0,
-                });
+    async fn switch_to_album_search(&mut self) -> Result<(), crate::providers::Error> {
+        match &mut self.view {
+            View::ArtistSearch(search) => {
+                if let Some(artist) = search.cached_artists.get(search.cursor) {
+                    self.prev_view = Some(View::ArtistSearch(search.clone()));
+                    let albums = self.provider.artist_albums(&artist).await?.albums;
+                    self.view = View::AlbumSearch(AlbumSearch {
+                        insert_buffer: String::with_capacity(256),
+                        cached_albums: albums,
+                        cursor: 0,
+                    });
+                } else {
+                    search.cursor = 0;
+                }
             }
+            _ => {}
         }
         Ok(())
     }
 
-    async fn artist_track_search(&mut self) -> Result<(), crate::providers::Error> {
-        if let View::ArtistSearch(search) = &self.view {
-            if search.cursor < search.cached_artists.len() {
-                self.prev_view = Some(View::ArtistSearch(search.clone()));
-                let artist = &search.cached_artists[search.cursor];
-                let tracks = self
-                    .provider
-                    .artist_tracks(&artist)
-                    .await?
-                    .tracks
-                    .into_iter()
-                    .map(|mut track| {
-                        Arc::get_mut(&mut track.artists)
-                            .unwrap()
-                            .insert(0, artist.clone());
-                        track
-                    })
-                    .collect();
-                self.view = View::TrackList(TrackList {
-                    cached_tracks: tracks,
-                    cursor: 0,
-                });
+    async fn switch_to_track_search(&mut self) -> Result<(), crate::providers::Error> {
+        match &mut self.view {
+            View::ArtistSearch(search) => {
+                if let Some(artist) = search.cached_artists.get(search.cursor) {
+                    self.prev_view = Some(View::ArtistSearch(search.clone()));
+                    let tracks = self
+                        .provider
+                        .artist_tracks(&artist)
+                        .await?
+                        .tracks
+                        .into_iter()
+                        .map(|mut track| {
+                            Arc::get_mut(&mut track.artists)
+                                .unwrap()
+                                .insert(0, artist.clone());
+                            track
+                        })
+                        .collect();
+                    self.view = View::TrackList(TrackList {
+                        cached_tracks: tracks,
+                        cursor: 0,
+                    });
+                } else {
+                    search.cursor = 0;
+                }
             }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn switch_to_artist(&mut self) -> Result<(), crate::providers::Error> {
+        match &mut self.view {
+            View::AlbumSearch(search) => {
+                if let Some(album) = search.cached_albums.get(search.cursor) {
+                    self.prev_view = Some(View::AlbumSearch(search.clone()));
+                    self.view = View::ArtistSearch(ArtistSearch {
+                        insert_buffer: std::mem::replace(&mut search.insert_buffer, String::new()),
+                        cached_artists: album.artists.clone(),
+                        cursor: 0,
+                    })
+                } else {
+                    search.cursor = 0;
+                }
+            }
+            View::TrackList(list) => {
+                if let Some(track) = list.cached_tracks.get(list.cursor) {
+                    self.prev_view = Some(View::TrackList(list.clone()));
+                    self.view = View::ArtistSearch(ArtistSearch {
+                        insert_buffer: String::new(),
+                        cached_artists: track.artists.to_vec(),
+                        cursor: 0,
+                    })
+                } else {
+                    list.cursor = 0;
+                }
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -378,13 +417,18 @@ impl App {
                     }
                 }
                 Key::Alt('a') => {
-                    if let Err(err) = state.artist_album_search().await {
-                        log::error!("cannot fetch artist albums: {}", err);
+                    if let Err(err) = state.switch_to_album_search().await {
+                        log::error!("cannot switch to album search: {}", err);
                     }
                 }
                 Key::Alt('t') => {
-                    if let Err(err) = state.artist_track_search().await {
-                        log::error!("cannot fetch artist tracks: {}", err);
+                    if let Err(err) = state.switch_to_track_search().await {
+                        log::error!("cannot switch to track search: {}", err);
+                    }
+                }
+                Key::Alt('s') => {
+                    if let Err(err) = state.switch_to_artist().await {
+                        log::error!("cannot switch to artist: {}", err);
                     }
                 }
                 Key::Char('\n') => match state.action().await {
