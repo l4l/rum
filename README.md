@@ -20,20 +20,20 @@ Currently, the tool has 2 main views: search panel and tracks listing.
 Hotkeys are currently cannot be configured and are the following:
 
 - Arrow Up/Down - scroll up/down displayed list;
-- Left/Right - switch to previous/next track;
+- Arrow Left/Right - switch to previous/next track;
 - Backspace (at track list view) - display back to search panel;
 - Tab - switch between search types (currently track & album search are available);
 - Ctrl+a (at track list view) - add all tracks to playlist;
-- Ctrl+r - redraw screen (might be helpful after resizing);
 - Ctrl+s - stop playback and clear playlist;
+- Ctrl+p - pause/unpause playback;
 - Alt+a (at artist search) - switch to artist albums;
 - Alt+t (at artist search) - switch to artist tracks;
-- Alt+p - switch to playlist view
-- Space - pause/unpause currently played track;
-- [ - skip 5 seconds forward of currently played track;
-- ] - skip 5 seconds backward of currently played track;
+- Alt+s - switch to related artist(s);
+- Alt+p - switch to playlist view;
+- ] - skip 5 seconds forward of currently played track;
+- [ - skip 5 seconds backward of currently played track;
 - Enter - select item at list view (at track list view append to the end of playlist, rather than replacing it);
-- Delete - quit the program.
+- Ctrl+c/Delete - quit the program.
 
 # Development
 
