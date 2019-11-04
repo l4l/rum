@@ -28,6 +28,7 @@ Hotkeys are currently cannot be configured and are the following:
 - Ctrl+s - stop playback and clear playlist;
 - Alt+a (at artist search) - switch to artist albums;
 - Alt+t (at artist search) - switch to artist tracks;
+- Alt+p - switch to playlist view
 - Space - pause/unpause currently played track;
 - [ - skip 5 seconds forward of currently played track;
 - ] - skip 5 seconds backward of currently played track;

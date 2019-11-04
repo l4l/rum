@@ -39,6 +39,7 @@ impl Drawer {
             DrawState::AlbumSearch(search) => search.cursor = pointer,
             DrawState::TrackSearch(_) => {}
             DrawState::TrackList(list) => list.cursor = pointer,
+            DrawState::Playlist(_) => {}
         }
     }
 
@@ -55,6 +56,9 @@ impl Drawer {
             }
             app::View::TrackList(list) => {
                 self.reset_to_track_list().update(&list);
+            }
+            app::View::Playlist(list) => {
+                self.reset_to_playlist().update(&list);
             }
         }
         self.update_pointer(state.pointer);
@@ -109,12 +113,25 @@ impl Drawer {
         }
     }
 
+    fn reset_to_playlist(&mut self) -> &mut Playlist {
+        if let DrawState::Playlist(ref mut this) = self.state {
+            return this;
+        }
+        self.state = DrawState::Playlist(Playlist::new());
+        if let DrawState::Playlist(ref mut this) = &mut self.state {
+            this
+        } else {
+            unreachable!()
+        }
+    }
+
     pub fn draw(&mut self) -> Result<(), Error> {
         match &self.state {
             DrawState::ArtistSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::AlbumSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::TrackSearch(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
             DrawState::TrackList(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
+            DrawState::Playlist(state) => self.terminal.draw(|mut f| state.draw(&mut f)),
         }
     }
 }
@@ -124,6 +141,7 @@ enum DrawState {
     AlbumSearch(AlbumSearch),
     TrackSearch(TrackSearch),
     TrackList(TrackList),
+    Playlist(Playlist),
 }
 
 struct ArtistSearch {
@@ -338,6 +356,47 @@ impl TrackList {
         List::new(cursored_line(self.tracks.iter(), self.cursor, chunks[1]))
             .block(Block::default().title("Found Tracks").borders(Borders::ALL))
             .render(&mut frame, chunks[1]);
+    }
+}
+
+struct Playlist {
+    cursor: usize,
+    tracks: Vec<String>,
+}
+
+impl Playlist {
+    fn new() -> Self {
+        Self {
+            cursor: 0,
+            tracks: Vec::new(),
+        }
+    }
+
+    fn update(&mut self, playlist: &app::Playlist) {
+        self.tracks = playlist
+            .tracks
+            .iter()
+            .map(|track| {
+                format!(
+                    "{} ({})",
+                    track.name,
+                    itertools::join(track.artists.iter().map(|a| a.name.as_str()), ", ")
+                )
+            })
+            .collect();
+        self.cursor = playlist.current;
+    }
+
+    fn draw(&self, mut frame: &mut Frame<Backend>) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .split(frame.size());
+
+        List::new(cursored_line(self.tracks.iter(), self.cursor, chunks[0]))
+            .block(Block::default().title("Playlist").borders(Borders::ALL))
+            .render(&mut frame, chunks[0]);
     }
 }
 

@@ -1,6 +1,9 @@
 use std::sync::mpsc::{self, TryRecvError};
+use std::sync::{Arc, Mutex};
 
 use mpv::{MpvHandler, MpvHandlerBuilder, Result};
+
+use crate::meta::Track;
 
 struct MediaWorker {
     handler: MpvHandler,
@@ -48,6 +51,11 @@ impl MediaWorker {
         Ok(())
     }
 
+    fn playlist_pos(&self) -> Result<usize> {
+        let pos: i64 = self.handler.get_property("playlist-pos")?;
+        Ok(pos as usize)
+    }
+
     fn poll_events(&mut self) -> Result<bool> {
         while let Some(ev) = self.handler.wait_event(0.1) {
             match ev {
@@ -66,7 +74,7 @@ impl MediaWorker {
 
 #[derive(Debug)]
 pub enum Command {
-    Enqueue(String),
+    Enqueue { track: Track, url: String },
     Stop,
     NextTrack,
     PrevTrack,
@@ -75,40 +83,79 @@ pub enum Command {
     Backward5,
 }
 
+#[derive(Debug)]
+pub struct PlayerState {
+    playlist: Vec<Track>,
+    current_position: usize,
+}
+
+impl PlayerState {
+    fn new() -> Self {
+        Self {
+            playlist: vec![],
+            current_position: 0,
+        }
+    }
+
+    pub fn playlist(&self) -> impl Iterator<Item = &'_ Track> {
+        self.playlist.iter()
+    }
+
+    pub fn current(&self) -> usize {
+        self.current_position
+    }
+}
+
+pub type State = Arc<Mutex<PlayerState>>;
+
 pub struct Player {
     rx: mpsc::Receiver<Command>,
+    state: State,
 }
 
 impl Player {
     pub fn new() -> (Self, mpsc::Sender<Command>) {
         let (tx, rx) = mpsc::channel();
-        (Self { rx }, tx)
+        let state = Arc::new(Mutex::new(PlayerState::new()));
+        (Self { rx, state }, tx)
     }
 
-    pub fn start_worker(self) -> std::thread::JoinHandle<Result<()>> {
-        std::thread::spawn(move || {
+    pub fn start_worker(self) -> (State, std::thread::JoinHandle<Result<()>>) {
+        let state = self.state.clone();
+
+        let handle = std::thread::spawn(move || {
             let mut worker = MediaWorker::new()?;
             loop {
                 worker.poll_events()?;
                 match self.rx.try_recv() {
-                    Ok(Command::Enqueue(url)) => {
+                    Ok(Command::Enqueue { track, url }) => {
                         if let Err(err) = worker.loadfile(&url) {
-                            log::error!("cannot perform loadfile: {}", err);
+                            log::error!("cannot load {}: {}, url: {}", track.name, err, url);
+                        } else {
+                            self.state.lock().unwrap().playlist.push(track);
                         }
                     }
                     Ok(Command::Stop) => {
                         if let Err(err) = worker.stop() {
                             log::error!("cannot stop the track: {}", err);
+                        } else {
+                            let mut state = self.state.lock().unwrap();
+                            state.playlist.clear();
+                            state.current_position = 0;
                         }
                     }
                     Ok(Command::NextTrack) => {
                         if let Err(err) = worker.next() {
                             log::error!("cannot switch to next track: {}", err);
+                        } else {
+                            self.state.lock().unwrap().current_position += 1;
                         }
                     }
                     Ok(Command::PrevTrack) => {
                         if let Err(err) = worker.prev() {
                             log::error!("cannot switch to previous track: {}", err);
+                        } else {
+                            self.state.lock().unwrap().current_position -= 1;
                         }
                     }
                     Ok(Command::Pause) => {
@@ -132,7 +179,14 @@ impl Player {
                         return Ok(());
                     }
                 }
+
+                if let Ok(pos) = worker.playlist_pos() {
+                    let mut state = self.state.lock().unwrap();
+                    state.current_position = pos;
+                } // TODO: else will be triggered on empty playlist
             }
-        })
+        });
+
+        (state, handle)
     }
 }

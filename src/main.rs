@@ -20,9 +20,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let provider = providers::Provider::new();
 
     let (player, chan) = player::Player::new();
-    player.start_worker();
+    let (state, _) = player.start_worker();
 
-    let app = app::App::create(provider, chan)?;
+    let app = app::App::create(provider, chan, state)?;
     log::info!("Spinning up a fancy UI");
     app.run().await?;
 
