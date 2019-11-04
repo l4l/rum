@@ -1,12 +1,13 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use snafu::ResultExt;
 use termion::event::{Event, Key};
 use tokio::prelude::*;
 
 use crate::draw;
-use crate::player::Command;
-use crate::providers::{Album, Artist, Provider, Track};
+use crate::meta::{Album, Artist, Track};
+use crate::player::{self, Command};
+use crate::providers::Provider;
 
 #[derive(Debug, Clone)]
 pub struct ArtistSearch {
@@ -30,17 +31,44 @@ pub struct TrackList {
     pub cached_tracks: Vec<Track>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Playlist {
+    pub tracks: Vec<Track>,
+    pub current: usize,
+    prev_view: Box<View>,
+}
+
+#[derive(Debug, Clone)]
+pub enum View {
+    ArtistSearch(ArtistSearch),
+    AlbumSearch(AlbumSearch),
+    TrackSearch(TrackSearch),
+    TrackList(TrackList),
+    Playlist(Playlist),
+}
+
+impl Default for View {
+    fn default() -> Self {
+        View::AlbumSearch(AlbumSearch {
+            insert_buffer: String::with_capacity(256),
+            cached_albums: vec![],
+        })
+    }
+}
+
 pub struct State {
     provider: Provider,
+    player_state: player::State,
     prev_view: Option<(usize, View)>,
     pub view: View,
     pub pointer: usize,
 }
 
 impl State {
-    fn new(provider: Provider) -> Self {
+    fn new(provider: Provider, player_state: player::State) -> Self {
         Self {
             provider,
+            player_state,
             prev_view: None,
             view: View::default(),
             pointer: 0,
@@ -52,7 +80,7 @@ impl State {
         let len = match &self.view {
             ArtistSearch(search) => search.cached_artists.len(),
             AlbumSearch(search) => search.cached_albums.len(),
-            TrackSearch(_) => return,
+            TrackSearch(_) | Playlist(_) => return,
             TrackList(search) => search.cached_tracks.len(),
         };
         if len != 0 && self.pointer < len - 1 {
@@ -62,11 +90,12 @@ impl State {
     fn pointer_up(&mut self) {
         use View::*;
         match &self.view {
-            ArtistSearch(_) | AlbumSearch(_) | TrackSearch(_) | TrackList(_) => {
+            ArtistSearch(_) | AlbumSearch(_) | TrackList(_) => {
                 if self.pointer > 0 {
                     self.pointer -= 1;
                 }
             }
+            TrackSearch(_) | Playlist(_) => {}
         }
     }
 
@@ -76,7 +105,7 @@ impl State {
             ArtistSearch(self::ArtistSearch { insert_buffer, .. })
             | AlbumSearch(self::AlbumSearch { insert_buffer, .. })
             | TrackSearch(self::TrackSearch { insert_buffer }) => insert_buffer.push(c),
-            TrackList(_) => {}
+            TrackList(_) | Playlist(_) => {}
         }
     }
 
@@ -95,6 +124,7 @@ impl State {
                     self.view = previous;
                 }
             }
+            Playlist(_) => {}
         }
     }
 
@@ -102,7 +132,7 @@ impl State {
         if let View::ArtistSearch(search) = &self.view {
             if self.pointer < search.cached_artists.len() {
                 self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
-                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                let artist = &search.cached_artists[self.pointer];
                 self.pointer = 0;
                 let albums = self.provider.artist_albums(&artist).await?.albums;
                 self.view = View::AlbumSearch(AlbumSearch {
@@ -118,9 +148,21 @@ impl State {
         if let View::ArtistSearch(search) = &self.view {
             if self.pointer < search.cached_artists.len() {
                 self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
-                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                let artist = &search.cached_artists[self.pointer];
                 self.pointer = 0;
-                let tracks = self.provider.artist_tracks(&artist).await?.tracks;
+                let tracks = self
+                    .provider
+                    .artist_tracks(&artist)
+                    .await?
+                    .tracks
+                    .into_iter()
+                    .map(|mut track| {
+                        Arc::get_mut(&mut track.artists)
+                            .unwrap()
+                            .insert(0, artist.clone());
+                        track
+                    })
+                    .collect();
                 self.view = View::TrackList(TrackList {
                     cached_tracks: tracks,
                 });
@@ -155,7 +197,23 @@ impl State {
                 let album = &search.cached_albums[self.pointer];
                 self.pointer = 0;
                 self.view = TrackList(self::TrackList {
-                    cached_tracks: self.provider.album_tracks(&album).await?.tracks,
+                    cached_tracks: self
+                        .provider
+                        .album_tracks(&album)
+                        .await?
+                        .tracks
+                        .into_iter()
+                        .map(|mut track| {
+                            let track_artists = Arc::get_mut(&mut track.artists).unwrap();
+                            // XXX: quadratic complexity here, though maybe ok due to small sizes
+                            for album_artist in album.artists.iter() {
+                                if !track_artists.iter().any(|x| x.name == album_artist.name) {
+                                    track_artists.push(album_artist.clone());
+                                }
+                            }
+                            track
+                        })
+                        .collect(),
                 });
             }
             TrackSearch(search) => {
@@ -172,30 +230,13 @@ impl State {
                 }
             }
             TrackList(search) => {
-                let track = &search.cached_tracks[self.pointer];
+                let track = search.cached_tracks[self.pointer].clone();
                 let url = self.provider.get_track_url(&track).await?;
-                return Ok(Some(Command::Enqueue(url)));
+                return Ok(Some(Command::Enqueue { track, url }));
             }
             _ => {}
         }
         Ok(None)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum View {
-    ArtistSearch(ArtistSearch),
-    AlbumSearch(AlbumSearch),
-    TrackSearch(TrackSearch),
-    TrackList(TrackList),
-}
-
-impl Default for View {
-    fn default() -> Self {
-        View::AlbumSearch(AlbumSearch {
-            insert_buffer: String::with_capacity(256),
-            cached_albums: vec![],
-        })
     }
 }
 
@@ -216,16 +257,19 @@ pub enum Error {
 pub struct App {
     provider: Provider,
     player_commands: mpsc::Sender<Command>,
+    player_state: player::State,
 }
 
 impl App {
     pub fn create(
         provider: Provider,
         player_commands: mpsc::Sender<Command>,
+        player_state: player::State,
     ) -> Result<Self, Error> {
         Ok(Self {
             provider,
             player_commands,
+            player_state,
         })
     }
 
@@ -258,9 +302,10 @@ impl App {
         let App {
             provider,
             player_commands,
+            player_state,
         } = self;
 
-        let mut state = State::new(provider);
+        let mut state = State::new(provider, player_state);
         let mut drawer = draw::Drawer::new().context(Drawer {
             case: "create context",
         })?;
@@ -292,11 +337,11 @@ impl App {
                     .context(PlayerCommandError { event })?,
                 Key::Ctrl('a') => {
                     if let View::TrackList(ref search) = state.view {
-                        for track in &search.cached_tracks {
+                        for track in search.cached_tracks.iter().cloned() {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
                                     player_commands
-                                        .send(Command::Enqueue(url))
+                                        .send(Command::Enqueue { track, url })
                                         .context(PlayerCommandError { event })?;
                                 }
                                 Err(err) => {
@@ -304,6 +349,18 @@ impl App {
                                 }
                             }
                         }
+                    }
+                }
+                Key::Alt('p') => {
+                    if let View::Playlist(view) = state.view {
+                        state.view = *view.prev_view;
+                    } else {
+                        let player_state = state.player_state.lock().unwrap();
+                        state.view = View::Playlist(Playlist {
+                            tracks: player_state.playlist().cloned().collect(),
+                            current: player_state.current(),
+                            prev_view: Box::new(state.view),
+                        });
                     }
                 }
                 Key::Alt('a') => {

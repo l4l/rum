@@ -1,53 +1,41 @@
 use std::convert::{TryFrom, TryInto};
+use std::result::Result as StdResult;
 
 use futures::future::TryFutureExt;
 use reqwest::Client;
 use snafu::ResultExt;
 use strum_macros::Display;
-use unhtml::{self, FromHtml};
-use unhtml_derive::*;
+use unhtml::FromHtml;
 
-#[derive(Debug, Clone)]
-pub struct Artist {
-    pub url: String,
-    pub name: String,
-}
+use crate::meta;
 
 #[derive(FromHtml)]
 struct ArtistRaw {
-    #[allow(unused)]
-    #[html(selector = "div.artist__cover img.artist-pics__pic", attr = "src")]
-    images: String,
-    #[html(selector = "div.artist__name a.d-link", attr = "href")]
-    url: String,
-    #[html(selector = "div.artist__name a.d-link", attr = "inner")]
-    name: String,
+    #[html(attr = "href")]
+    url: Option<String>,
+    #[html(attr = "inner")]
+    name: Option<String>,
 }
 
-impl TryFrom<ArtistRaw> for Artist {
+impl TryFrom<ArtistRaw> for meta::Artist {
     type Error = ();
 
-    fn try_from(raw: ArtistRaw) -> std::result::Result<Self, Self::Error> {
+    fn try_from(raw: ArtistRaw) -> StdResult<Self, Self::Error> {
         Ok(Self {
-            url: raw.url,
-            name: raw.name,
+            url: raw.url.ok_or(())?,
+            name: raw.name.ok_or(())?,
         })
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Artists {
-    pub artists: Vec<Artist>,
 }
 
 #[derive(FromHtml)]
 #[html(selector = "div.serp-snippet__artists")]
 struct ArtistsRaw {
-    #[html(selector = "div.artist__content")]
+    #[html(selector = "div.artist__content div.artist__name a.d-link")]
     artists: Vec<ArtistRaw>,
 }
 
-impl From<ArtistsRaw> for Artists {
+impl From<ArtistsRaw> for meta::Artists {
     fn from(raw: ArtistsRaw) -> Self {
         Self {
             artists: raw
@@ -59,37 +47,32 @@ impl From<ArtistsRaw> for Artists {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Album {
-    pub url: String,
-    pub title: String,
-    pub artist: String,
-    pub year: u16,
-    pub version: Option<String>,
-}
-
 #[derive(FromHtml)]
 struct AlbumRaw {
     #[html(selector = "div.album__title a.deco-link", attr = "href")]
     url: String,
     #[html(selector = "div.album__title", attr = "inner")]
     title: String,
-    #[html(selector = "div.album__artist", attr = "inner")]
-    artist: String,
+    #[html(selector = "div.album__artist a.d-link")]
+    artists: Vec<ArtistRaw>,
     #[html(selector = "div.album__year", attr = "inner")]
     year_with_version: String,
     #[html(selector = "div.album__year span.album__version", attr = "inner")]
     version: Option<String>,
 }
 
-impl TryFrom<AlbumRaw> for Album {
+impl TryFrom<AlbumRaw> for meta::Album {
     type Error = ();
 
-    fn try_from(raw: AlbumRaw) -> std::result::Result<Self, Self::Error> {
+    fn try_from(raw: AlbumRaw) -> StdResult<Self, Self::Error> {
         Ok(Self {
             url: raw.url,
             title: raw.title,
-            artist: raw.artist,
+            artists: raw
+                .artists
+                .into_iter()
+                .filter_map(|raw| raw.try_into().ok())
+                .collect(),
             year: raw
                 .year_with_version
                 .replace(raw.version.as_deref().unwrap_or(""), "")
@@ -100,18 +83,6 @@ impl TryFrom<AlbumRaw> for Album {
     }
 }
 
-impl Album {
-    #[allow(unused)]
-    fn id(&self) -> u32 {
-        self.url.split('/').nth(1).unwrap().parse().unwrap()
-    }
-}
-
-#[derive(Debug)]
-pub struct Albums {
-    pub albums: Vec<Album>,
-}
-
 #[derive(FromHtml)]
 #[html(selector = "div.centerblock")]
 struct AlbumsRaw {
@@ -119,7 +90,7 @@ struct AlbumsRaw {
     albums: Vec<AlbumRaw>,
 }
 
-impl From<AlbumsRaw> for Albums {
+impl From<AlbumsRaw> for meta::Albums {
     fn from(raws: AlbumsRaw) -> Self {
         Self {
             albums: raws
@@ -131,25 +102,20 @@ impl From<AlbumsRaw> for Albums {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Track {
-    pub album_id: u32,
-    pub track_id: u32,
-    pub name: String,
-}
-
 #[derive(FromHtml)]
 struct TrackRaw {
     #[html(selector = "div.d-track__name a.d-track__title", attr = "href")]
     url: Option<String>,
     #[html(selector = "div.d-track__name a.d-track__title", attr = "inner")]
     name: Option<String>,
+    #[html(selector = "div.d-track__meta span.d-track__artists a")]
+    artists: Vec<ArtistRaw>,
 }
 
-impl TryFrom<TrackRaw> for Track {
+impl TryFrom<TrackRaw> for meta::Track {
     type Error = ();
 
-    fn try_from(raw: TrackRaw) -> std::result::Result<Self, Self::Error> {
+    fn try_from(raw: TrackRaw) -> StdResult<Self, Self::Error> {
         // `/album/4766/track/57703`
         let url = raw.url.ok_or(())?;
         let name = raw.name.ok_or(())?;
@@ -161,27 +127,29 @@ impl TryFrom<TrackRaw> for Track {
         };
         let album_id = parse_int()?;
         let track_id = parse_int()?;
+
+        let artists = raw
+            .artists
+            .into_iter()
+            .filter_map(|raw| raw.try_into().ok())
+            .collect();
+
         Ok(Self {
             album_id,
             track_id,
             name,
+            artists: std::sync::Arc::new(artists),
         })
     }
 }
 
-#[derive(Debug)]
-pub struct Tracks {
-    pub tracks: Vec<Track>,
-}
-
 #[derive(FromHtml)]
-#[html(selector = "div.d-track")]
 struct TracksRaw {
-    #[html(selector = "div.d-track__name")]
+    #[html(selector = "div.d-track")]
     tracks: Vec<TrackRaw>,
 }
 
-impl From<TracksRaw> for Tracks {
+impl From<TracksRaw> for meta::Tracks {
     fn from(raws: TracksRaw) -> Self {
         Self {
             tracks: raws
@@ -246,7 +214,7 @@ pub enum Error {
     },
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, Error>;
 
 /// Yandex Music info/media provider
 pub struct Provider {
@@ -279,7 +247,7 @@ impl Provider {
         }
     }
 
-    pub async fn artists_search(&self, text: &str) -> Result<Artists> {
+    pub async fn artists_search(&self, text: &str) -> Result<meta::Artists> {
         let url = SearchType::Artists.search_url(text);
 
         self.client
@@ -295,7 +263,7 @@ impl Provider {
             })
     }
 
-    pub async fn artist_albums(&self, artist: &Artist) -> Result<Albums> {
+    pub async fn artist_albums(&self, artist: &meta::Artist) -> Result<meta::Albums> {
         let url = format!("{}{}/albums", BASE_URL, artist.url);
 
         self.client
@@ -311,7 +279,7 @@ impl Provider {
             })
     }
 
-    pub async fn artist_tracks(&self, artist: &Artist) -> Result<Tracks> {
+    pub async fn artist_tracks(&self, artist: &meta::Artist) -> Result<meta::Tracks> {
         let url = format!("{}{}/tracks", BASE_URL, artist.url);
 
         self.client
@@ -327,7 +295,7 @@ impl Provider {
             })
     }
 
-    pub async fn album_search(&self, text: &str) -> Result<Albums> {
+    pub async fn album_search(&self, text: &str) -> Result<meta::Albums> {
         let url = SearchType::Albums.search_url(text);
 
         self.client
@@ -343,7 +311,7 @@ impl Provider {
             })
     }
 
-    pub async fn track_search(&self, text: &str) -> Result<Tracks> {
+    pub async fn track_search(&self, text: &str) -> Result<meta::Tracks> {
         let url = SearchType::Tracks.search_url(text);
 
         self.client
@@ -359,7 +327,7 @@ impl Provider {
             })
     }
 
-    pub async fn album_tracks(&self, album: &Album) -> Result<Tracks> {
+    pub async fn album_tracks(&self, album: &meta::Album) -> Result<meta::Tracks> {
         let url = format!("{}{}", BASE_URL, album.url);
 
         self.client
@@ -375,7 +343,7 @@ impl Provider {
             })
     }
 
-    pub async fn get_track_url(&self, track: &Track) -> Result<String> {
+    pub async fn get_track_url(&self, track: &meta::Track) -> Result<String> {
         let url = format!("https://music.yandex.ru/api/v2.1/handlers/track/{}:{}/web-album-track-track-saved/download/m", track.track_id, track.album_id);
 
         let url = self
