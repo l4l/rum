@@ -224,7 +224,7 @@ impl State {
     async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
         use View::*;
         match &mut self.view {
-            ArtistSearch(search) => {
+            ArtistSearch(search) if !search.insert_buffer.is_empty() => {
                 search.cached_artists = self
                     .provider
                     .artists_search(&search.insert_buffer)
