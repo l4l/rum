@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 #[derive(Debug, Clone)]
 pub struct Artist {
     pub url: String,
@@ -13,7 +15,7 @@ pub struct Artists {
 pub struct Album {
     pub url: String,
     pub title: String,
-    pub artist: String,
+    pub artists: Vec<Artist>,
     pub year: u16,
     pub version: Option<String>,
 }
@@ -35,6 +37,7 @@ pub struct Track {
     pub album_id: u32,
     pub track_id: u32,
     pub name: String,
+    pub artists: Arc<Vec<Artist>>,
 }
 
 #[derive(Debug)]

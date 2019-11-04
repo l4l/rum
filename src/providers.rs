@@ -12,13 +12,10 @@ use crate::meta;
 
 #[derive(FromHtml)]
 struct ArtistRaw {
-    #[allow(unused)]
-    #[html(selector = "div.artist__cover img.artist-pics__pic", attr = "src")]
-    images: String,
-    #[html(selector = "div.artist__name a.d-link", attr = "href")]
-    url: String,
-    #[html(selector = "div.artist__name a.d-link", attr = "inner")]
-    name: String,
+    #[html(attr = "href")]
+    url: Option<String>,
+    #[html(attr = "inner")]
+    name: Option<String>,
 }
 
 impl TryFrom<ArtistRaw> for meta::Artist {
@@ -26,8 +23,8 @@ impl TryFrom<ArtistRaw> for meta::Artist {
 
     fn try_from(raw: ArtistRaw) -> StdResult<Self, Self::Error> {
         Ok(Self {
-            url: raw.url,
-            name: raw.name,
+            url: raw.url.ok_or(())?,
+            name: raw.name.ok_or(())?,
         })
     }
 }
@@ -35,7 +32,7 @@ impl TryFrom<ArtistRaw> for meta::Artist {
 #[derive(FromHtml)]
 #[html(selector = "div.serp-snippet__artists")]
 struct ArtistsRaw {
-    #[html(selector = "div.artist__content")]
+    #[html(selector = "div.artist__content div.artist__name a.d-link")]
     artists: Vec<ArtistRaw>,
 }
 
@@ -57,8 +54,8 @@ struct AlbumRaw {
     url: String,
     #[html(selector = "div.album__title", attr = "inner")]
     title: String,
-    #[html(selector = "div.album__artist", attr = "inner")]
-    artist: String,
+    #[html(selector = "div.album__artist a.d-link")]
+    artists: Vec<ArtistRaw>,
     #[html(selector = "div.album__year", attr = "inner")]
     year_with_version: String,
     #[html(selector = "div.album__year span.album__version", attr = "inner")]
@@ -72,7 +69,11 @@ impl TryFrom<AlbumRaw> for meta::Album {
         Ok(Self {
             url: raw.url,
             title: raw.title,
-            artist: raw.artist,
+            artists: raw
+                .artists
+                .into_iter()
+                .filter_map(|raw| raw.try_into().ok())
+                .collect(),
             year: raw
                 .year_with_version
                 .replace(raw.version.as_deref().unwrap_or(""), "")
@@ -108,6 +109,8 @@ struct TrackRaw {
     url: Option<String>,
     #[html(selector = "div.d-track__name a.d-track__title", attr = "inner")]
     name: Option<String>,
+    #[html(selector = "div.d-track__meta span.d-track__artists a")]
+    artists: Vec<ArtistRaw>,
 }
 
 impl TryFrom<TrackRaw> for meta::Track {
@@ -125,18 +128,25 @@ impl TryFrom<TrackRaw> for meta::Track {
         };
         let album_id = parse_int()?;
         let track_id = parse_int()?;
+
+        let artists = raw
+            .artists
+            .into_iter()
+            .filter_map(|raw| raw.try_into().ok())
+            .collect();
+
         Ok(Self {
             album_id,
             track_id,
             name,
+            artists: std::sync::Arc::new(artists),
         })
     }
 }
 
 #[derive(FromHtml)]
-#[html(selector = "div.d-track")]
 struct TracksRaw {
-    #[html(selector = "div.d-track__name")]
+    #[html(selector = "div.d-track")]
     tracks: Vec<TrackRaw>,
 }
 

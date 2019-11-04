@@ -207,10 +207,26 @@ impl AlbumSearch {
                 if let Some(ref version) = album.version {
                     format!(
                         "{}: {} (year: {}, {})",
-                        album.artist, album.title, album.year, version
+                        album
+                            .artists
+                            .get(0)
+                            .map(|a| a.name.as_str())
+                            .unwrap_or("unknown"),
+                        album.title,
+                        album.year,
+                        version
                     )
                 } else {
-                    format!("{}: {} (year: {})", album.artist, album.title, album.year)
+                    format!(
+                        "{}: {} (year: {})",
+                        album
+                            .artists
+                            .get(0)
+                            .map(|a| a.name.as_str())
+                            .unwrap_or("unknown"),
+                        album.title,
+                        album.year
+                    )
                 }
             })
             .collect();
@@ -302,7 +318,13 @@ impl TrackList {
         self.tracks = tracks
             .cached_tracks
             .iter()
-            .map(|track| track.name.clone())
+            .map(|track| {
+                format!(
+                    "{} ({})",
+                    track.name,
+                    itertools::join(track.artists.iter().map(|a| a.name.as_str()), ", ")
+                )
+            })
             .collect();
     }
 

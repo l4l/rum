@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use snafu::ResultExt;
 use termion::event::{Event, Key};
@@ -103,7 +103,7 @@ impl State {
         if let View::ArtistSearch(search) = &self.view {
             if self.pointer < search.cached_artists.len() {
                 self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
-                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                let artist = &search.cached_artists[self.pointer];
                 self.pointer = 0;
                 let albums = self.provider.artist_albums(&artist).await?.albums;
                 self.view = View::AlbumSearch(AlbumSearch {
@@ -119,9 +119,21 @@ impl State {
         if let View::ArtistSearch(search) = &self.view {
             if self.pointer < search.cached_artists.len() {
                 self.prev_view = Some((self.pointer, View::ArtistSearch(search.clone())));
-                let artist = search.cached_artists[self.pointer].clone(); // FIXME: clone is redundant
+                let artist = &search.cached_artists[self.pointer];
                 self.pointer = 0;
-                let tracks = self.provider.artist_tracks(&artist).await?.tracks;
+                let tracks = self
+                    .provider
+                    .artist_tracks(&artist)
+                    .await?
+                    .tracks
+                    .into_iter()
+                    .map(|mut track| {
+                        Arc::get_mut(&mut track.artists)
+                            .unwrap()
+                            .insert(0, artist.clone());
+                        track
+                    })
+                    .collect();
                 self.view = View::TrackList(TrackList {
                     cached_tracks: tracks,
                 });
@@ -156,7 +168,23 @@ impl State {
                 let album = &search.cached_albums[self.pointer];
                 self.pointer = 0;
                 self.view = TrackList(self::TrackList {
-                    cached_tracks: self.provider.album_tracks(&album).await?.tracks,
+                    cached_tracks: self
+                        .provider
+                        .album_tracks(&album)
+                        .await?
+                        .tracks
+                        .into_iter()
+                        .map(|mut track| {
+                            let track_artists = Arc::get_mut(&mut track.artists).unwrap();
+                            // XXX: quadratic complexity here, though maybe ok due to small sizes
+                            for album_artist in album.artists.iter() {
+                                if !track_artists.iter().any(|x| x.name == album_artist.name) {
+                                    track_artists.push(album_artist.clone());
+                                }
+                            }
+                            track
+                        })
+                        .collect(),
                 });
             }
             TrackSearch(search) => {
