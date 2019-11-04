@@ -5,8 +5,7 @@ use futures::future::TryFutureExt;
 use reqwest::Client;
 use snafu::ResultExt;
 use strum_macros::Display;
-use unhtml::{self, FromHtml};
-use unhtml_derive::*;
+use unhtml::FromHtml;
 
 use crate::meta;
 
