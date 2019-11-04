@@ -8,7 +8,7 @@ struct MediaWorker {
 }
 
 impl MediaWorker {
-    pub fn new() -> Result<Self> {
+    fn new() -> Result<Self> {
         let handler = MpvHandlerBuilder::new()?.build()?;
         Ok(Self {
             handler,
@@ -16,39 +16,39 @@ impl MediaWorker {
         })
     }
 
-    pub fn loadfile(&mut self, url: &str) -> Result<()> {
+    fn loadfile(&mut self, url: &str) -> Result<()> {
         self.handler.command(&["loadfile", &url, "append-play"])?;
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<()> {
+    fn stop(&mut self) -> Result<()> {
         self.handler.command(&["stop"])?;
         Ok(())
     }
 
-    pub fn next(&mut self) -> Result<()> {
+    fn next(&mut self) -> Result<()> {
         self.handler.command(&["playlist-next"])?;
         Ok(())
     }
 
-    pub fn prev(&mut self) -> Result<()> {
+    fn prev(&mut self) -> Result<()> {
         self.handler.command(&["playlist-prev"])?;
         Ok(())
     }
 
-    pub fn pause(&mut self) -> Result<()> {
+    fn pause(&mut self) -> Result<()> {
         self.is_paused ^= true;
         self.handler.set_property("pause", self.is_paused)?;
         Ok(())
     }
 
-    pub fn time_seek(&mut self, f: impl FnOnce(i64) -> i64) -> Result<()> {
+    fn time_seek(&mut self, f: impl FnOnce(i64) -> i64) -> Result<()> {
         let pos: i64 = self.handler.get_property("time-pos")?;
         self.handler.set_property("time-pos", f(pos))?;
         Ok(())
     }
 
-    pub fn poll_events(&mut self) -> Result<bool> {
+    fn poll_events(&mut self) -> Result<bool> {
         while let Some(ev) = self.handler.wait_event(0.1) {
             match ev {
                 mpv::Event::Shutdown | mpv::Event::Idle => {
