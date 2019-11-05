@@ -139,6 +139,7 @@ impl State {
         }
     }
 
+    #[allow(clippy::single_match)]
     async fn switch_to_album_search(&mut self) -> Result<(), crate::providers::Error> {
         match &mut self.view {
             View::ArtistSearch(search) => {
@@ -159,6 +160,7 @@ impl State {
         Ok(())
     }
 
+    #[allow(clippy::single_match)]
     async fn switch_to_track_search(&mut self) -> Result<(), crate::providers::Error> {
         match &mut self.view {
             View::ArtistSearch(search) => {

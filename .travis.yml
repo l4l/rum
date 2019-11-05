@@ -1,13 +1,17 @@
+cache: cargo
+before_cache:
+  - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
 os:
   - linux
 language: rust
-cache: cargo
-script:
-  - cargo fmt --all -- --write-mode=diff
-  - cargo test
 rust:
   - nightly
 before_script:
-  - rustup component add clippy
+  - rustup component add rustfmt clippy
+  - sudo apt-get update
+  - sudo apt-get -y install libmpv-dev
 script:
-  - cargo clippy
+  - cargo fmt -- --check
+  - cargo clippy --all-targets --all-features -- -D clippy::all
+  - cargo build --all-targets --all-features
+  - cargo test --all-targets --all-features

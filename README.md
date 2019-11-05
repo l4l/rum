@@ -1,7 +1,7 @@
 # RUM Player
 
 [![Build Status](https://travis-ci.org/l4l/rum.svg?branch=master)](https://travis-ci.org/l4l/rum)
-[![Crates.io](https://img.shields.io/crates/v/$CRATE.svg)](https://crates.io/crates/rum-player)
+[![Crates.io](https://img.shields.io/crates/v/rum-player.svg)](https://crates.io/crates/rum-player)
 
 RUM is a terminal music player, that able to play remote media from different sources (currently only Ya.Music).
 
