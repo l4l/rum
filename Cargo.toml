@@ -29,5 +29,9 @@ strum = "0.16.0"
 strum_macros = "0.16.0"
 itertools = "0.8.1"
 
+[dev-dependencies]
+quickcheck = "0.9.0"
+quickcheck_macros = "0.8.0"
+
 [badges]
 travis-ci = { repository = "l4l/rum" }
