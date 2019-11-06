@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc};
 use snafu::ResultExt;
 use tokio::prelude::*;
 
+use crate::config::Config;
 use crate::draw;
 use crate::key::{Action, Context as KeyContext};
 use crate::meta::{Album, Artist, Track};
@@ -308,6 +309,7 @@ pub enum Error {
 }
 
 pub struct App {
+    config: Config,
     provider: Provider,
     player_commands: mpsc::Sender<Command>,
     player_state: player::State,
@@ -315,11 +317,13 @@ pub struct App {
 
 impl App {
     pub fn create(
+        config: Config,
         provider: Provider,
         player_commands: mpsc::Sender<Command>,
         player_state: player::State,
     ) -> Result<Self, Error> {
         Ok(Self {
+            config,
             provider,
             player_commands,
             player_state,
@@ -328,6 +332,7 @@ impl App {
 
     pub async fn run(self) -> Result<(), Error> {
         let App {
+            config,
             provider,
             player_commands,
             player_state,
@@ -342,7 +347,7 @@ impl App {
             case: "initial draw",
         })?;
 
-        let (mut events, mut current_context) = crate::key::BindingConfig::default().actions();
+        let (mut events, mut current_context) = config.binding.actions();
 
         while let Some(action) = events.next().await {
             match action {

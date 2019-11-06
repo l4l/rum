@@ -52,9 +52,17 @@ impl Context {
             is_playlist: true,
         }
     }
+
+    pub fn all() -> Self {
+        Context {
+            is_search: true,
+            is_tracklist: true,
+            is_playlist: true,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
     Quit,
     PointerUp,
@@ -73,46 +81,43 @@ pub enum Action {
     SwitchToArtists,
     Enter,
     SwitchView,
+    #[serde(skip)]
     Char(char),
     Backspace,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Binding {
-    context: Context,
-    action: Action,
+pub struct ContextedAction {
+    pub context: Context,
+    pub action: Action,
 }
 
-struct EventActions {
-    actions: Vec<Binding>,
+#[derive(Default, Debug)]
+pub struct BindingConfig {
+    bindings: HashMap<Event, Vec<ContextedAction>>,
 }
 
-impl EventActions {
-    fn get(&self, context: Context) -> Option<Action> {
-        self.actions
-            .iter()
-            .find(|action| context.is_sub(action.context))
-            .map(|action| action.action)
-    }
-}
-
-impl From<Vec<Binding>> for EventActions {
-    fn from(mut actions: Vec<Binding>) -> Self {
-        actions.sort_by_key(|v| v.context);
-
+impl From<HashMap<Event, Vec<ContextedAction>>> for BindingConfig {
+    fn from(event_actions: HashMap<Event, Vec<ContextedAction>>) -> Self {
         Self {
-            actions: actions
+            bindings: event_actions
                 .into_iter()
-                .filter(|action| action.context.is_valid())
-                .dedup()
+                .filter_map(|(key, mut actions)| {
+                    actions.sort_by_key(|v| v.context);
+                    let actions: Vec<_> = actions
+                        .into_iter()
+                        .filter(|action| action.context.is_valid())
+                        .dedup()
+                        .collect();
+                    if actions.is_empty() {
+                        None
+                    } else {
+                        Some((key, actions))
+                    }
+                })
                 .collect(),
         }
     }
-}
-
-#[derive(Default)]
-pub struct BindingConfig {
-    bindings: HashMap<Event, EventActions>,
 }
 
 enum EventOrSwitch {
@@ -124,7 +129,12 @@ impl BindingConfig {
     fn action(&self, context: Context, event: &Event) -> Option<Action> {
         self.bindings
             .get(event)
-            .and_then(|actions| actions.get(context))
+            .and_then(|actions| {
+                actions
+                    .iter()
+                    .find(|contexed| context.is_sub(contexed.context))
+                    .map(|contexed| contexed.action)
+            })
             .or_else(|| BindingConfig::default_action(&event))
     }
 
@@ -256,25 +266,29 @@ mod tests {
             return TestResult::discard();
         }
 
-        let event_actions: EventActions = contexts
+        let event = Event::Key(Key::Up);
+        let contexts = contexts
             .into_iter()
             .map(|context| {
                 if context == search {
-                    Binding {
+                    ContextedAction {
                         context,
                         action: Action::Enter,
                     }
                 } else {
-                    Binding {
+                    ContextedAction {
                         context,
                         action: Action::Quit,
                     }
                 }
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+        let config: BindingConfig = vec![(event.clone(), contexts)]
+            .into_iter()
+            .collect::<HashMap<_, _>>()
             .into();
 
-        if let Some(found) = event_actions.get(search) {
+        if let Some(found) = config.action(search, &event) {
             TestResult::from_bool(found == Action::Enter)
         } else {
             TestResult::error("item not found")
