@@ -240,10 +240,13 @@ mod tests {
     impl Arbitrary for Context {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let mut val = [0];
-            while val[0] & 0b111 == 0 {
+            loop {
                 g.fill_bytes(&mut val);
+                let this: Context = val[0].into();
+                if this.is_valid() {
+                    return this;
+                }
             }
-            val[0].into()
         }
     }
 
