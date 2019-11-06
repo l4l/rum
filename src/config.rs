@@ -193,10 +193,17 @@ mod tests {
 [hotkey]
 "PointerUp" = "ArrowUp"
 "PointerDown" = "ArrowDown"
+"NextTrack" = "+"
+"PrevTrack" = "-"
+"Forward5" = "Ctrl++"
+"Backward5" = "Ctrl+-"
 
 [hotkey.search]
 "PointerUp" = "ArrowDown"
 "PointerDown" = "ArrowUp"
+
+[hotkey.tracklist]
+"Enter" = "Alt+0"
 "#
         .to_string();
 
