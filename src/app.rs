@@ -347,7 +347,7 @@ impl App {
             case: "initial draw",
         })?;
 
-        let (mut events, mut current_context) = config.binding.actions();
+        let (mut events, current_context) = config.binding.actions();
 
         while let Some(action) = events.next().await {
             match action {
@@ -451,17 +451,13 @@ impl App {
                 }
             }
 
-            match state.view {
+            *current_context.lock().unwrap() = match state.view {
                 View::AlbumSearch(_) | View::TrackSearch(_) | View::ArtistSearch(_) => {
-                    let _ = current_context.send(KeyContext::search());
+                    KeyContext::search()
                 }
-                View::TrackList(_) => {
-                    let _ = current_context.send(KeyContext::tracklist());
-                }
-                View::Playlist(_) => {
-                    let _ = current_context.send(KeyContext::playlist());
-                }
-            }
+                View::TrackList(_) => KeyContext::tracklist(),
+                View::Playlist(_) => KeyContext::playlist(),
+            };
 
             drawer.redraw(&state.view).context(Drawer {
                 case: "loop update state",

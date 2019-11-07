@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use futures::prelude::*;
 use itertools::Itertools;
@@ -120,11 +121,6 @@ impl From<HashMap<Event, Vec<ContextedAction>>> for BindingConfig {
     }
 }
 
-enum EventOrSwitch {
-    Event(std::io::Result<Event>),
-    Switch(Context),
-}
-
 impl BindingConfig {
     fn action(&self, context: Context, event: &Event) -> Option<Action> {
         self.bindings
@@ -164,27 +160,20 @@ impl BindingConfig {
         }
     }
 
-    pub fn actions(
-        self,
-    ) -> (
-        mpsc::UnboundedReceiver<Action>,
-        mpsc::UnboundedSender<Context>,
-    ) {
+    pub fn actions(self) -> (mpsc::UnboundedReceiver<Action>, Arc<Mutex<Context>>) {
         let (mut action_tx, action_rx) = mpsc::unbounded_channel();
-        let (context_tx, context_rx) = mpsc::unbounded_channel();
-        let mut current_context = Context::search();
+        let context = Arc::new(Mutex::new(Context::search()));
+
+        let current_context = context.clone();
+
         tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
-            let stream = futures::stream::select(
-                crate::input::events_stream(&mut stdin)
-                    .await
-                    .map(EventOrSwitch::Event),
-                context_rx.map(EventOrSwitch::Switch),
-            );
+            let stream = crate::input::events_stream(&mut stdin);
             let mut stream = Box::pin(stream);
             while let Some(event) = stream.next().await {
                 match event {
-                    EventOrSwitch::Event(Ok(event)) => {
+                    Ok(event) => {
+                        let current_context = *current_context.lock().unwrap();
                         if let Some(action) = self.action(current_context, &event) {
                             if let Err(err) = action_tx.send(action).await {
                                 log::warn!("events ended due to closed rx channel {}", err);
@@ -192,16 +181,13 @@ impl BindingConfig {
                             }
                         }
                     }
-                    EventOrSwitch::Event(Err(err)) => {
+                    Err(err) => {
                         log::error!("stdint event stream issue: {}", err);
-                    }
-                    EventOrSwitch::Switch(context) => {
-                        current_context = context;
                     }
                 };
             }
         });
-        (action_rx, context_tx)
+        (action_rx, context)
     }
 }
 
