@@ -16,8 +16,30 @@ export PATH=$PATH:~/.cargo/bin
 rum-player
 ```
 
-Currently, the tool has 2 main views: search panel and tracks listing.
-Hotkeys are currently cannot be configured and are the following:
+Currently, the tool has 3 main views: search panel, tracks listing and playlist.
+
+## Hotkeys
+
+Hotkeys can be set via toml config, that should be placed at `$XDG_CONFIG_HOME` for Linux, or at `$HOME/Library/Preferences` for macOS. All bindings must be specified at `[hotkey]` table and should be in form (note quotes): `"Event" = "Action"`. Hotkeys might also be specified for a particular view or context (currently only for one at a time) via subtable. If no context specified then hotkey considered as global and will be used with a lower priority. Here is a config example:
+
+```toml
+[hotkey]
+"PointerUp" = "ArrowUp"
+"PointerDown" = "ArrowDown"
+"NextTrack" = "+"
+"PrevTrack" = "-"
+"Forward5" = "Ctrl++"
+"Backward5" = "Ctrl+-"
+
+[hotkey.search]
+"PointerUp" = "ArrowDown"
+"PointerDown" = "ArrowUp"
+
+[hotkey.tracklist]
+"Enter" = "Alt+0"
+```
+
+Default hotkeys are the following:
 
 - Arrow Up/Down - scroll up/down displayed list;
 - Arrow Left/Right - switch to previous/next track;

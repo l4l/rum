@@ -233,9 +233,7 @@ pub async fn parse_event(mut rdr: &mut (impl AsyncRead + Unpin)) -> Result<Event
     }
 }
 
-pub async fn events_stream(
-    rdr: impl AsyncRead + Unpin,
-) -> impl Stream<Item = Result<Event, Error>> {
+pub fn events_stream(rdr: impl AsyncRead + Unpin) -> impl Stream<Item = Result<Event, Error>> {
     tokio::stream::unfold(rdr, |mut rdr| {
         async move {
             match parse_event(&mut rdr).await {

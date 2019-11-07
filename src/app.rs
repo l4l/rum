@@ -1,10 +1,11 @@
 use std::sync::{mpsc, Arc};
 
 use snafu::ResultExt;
-use termion::event::{Event, Key};
 use tokio::prelude::*;
 
+use crate::config::Config;
 use crate::draw;
+use crate::key::{Action, Context as KeyContext};
 use crate::meta::{Album, Artist, Track};
 use crate::player::{self, Command};
 use crate::providers::Provider;
@@ -295,9 +296,9 @@ impl State {
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
-    #[snafu(display("player error at {:?}: {}", event, source))]
+    #[snafu(display("player error at {:?}: {}", action, source))]
     PlayerCommandError {
-        event: Key,
+        action: Action,
         source: mpsc::SendError<Command>,
     },
     #[snafu(display("draw error at {}: {}", case, source))]
@@ -308,6 +309,7 @@ pub enum Error {
 }
 
 pub struct App {
+    config: Config,
     provider: Provider,
     player_commands: mpsc::Sender<Command>,
     player_state: player::State,
@@ -315,44 +317,22 @@ pub struct App {
 
 impl App {
     pub fn create(
+        config: Config,
         provider: Provider,
         player_commands: mpsc::Sender<Command>,
         player_state: player::State,
     ) -> Result<Self, Error> {
         Ok(Self {
+            config,
             provider,
             player_commands,
             player_state,
         })
     }
 
-    fn events() -> tokio::sync::mpsc::UnboundedReceiver<Key> {
-        let (mut tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            let mut stdin = tokio::io::stdin();
-            let mut stream = Box::pin(crate::input::events_stream(&mut stdin).await);
-            while let Some(event) = stream.next().await {
-                let key = match event {
-                    Ok(Event::Key(key)) => key,
-                    Err(err) => {
-                        log::error!("stdint event stream issue: {}", err);
-                        continue;
-                    }
-                    _ => {
-                        continue;
-                    }
-                };
-                if let Err(err) = tx.send(key).await {
-                    log::warn!("events ended due to closed rx channel {}", err);
-                    break;
-                }
-            }
-        });
-        rx
-    }
-
     pub async fn run(self) -> Result<(), Error> {
         let App {
+            config,
             provider,
             player_commands,
             player_state,
@@ -362,42 +342,44 @@ impl App {
         let mut drawer = draw::Drawer::new().context(Drawer {
             case: "create context",
         })?;
+
         drawer.redraw(&state.view).context(Drawer {
             case: "initial draw",
         })?;
-        let mut events = App::events();
 
-        while let Some(event) = events.next().await {
-            match event {
-                Key::Up => state.pointer_up(),
-                Key::Down => state.pointer_down(),
-                Key::Right => player_commands
+        let (mut events, current_context) = config.binding.actions();
+
+        while let Some(action) = events.next().await {
+            match action {
+                Action::PointerUp => state.pointer_up(),
+                Action::PointerDown => state.pointer_down(),
+                Action::NextTrack => player_commands
                     .send(Command::NextTrack)
-                    .context(PlayerCommandError { event })?,
-                Key::Left => player_commands
+                    .context(PlayerCommandError { action })?,
+                Action::PrevTrack => player_commands
                     .send(Command::PrevTrack)
-                    .context(PlayerCommandError { event })?,
-                Key::Ctrl('c') | Key::Delete => return Ok(()),
-                Key::Ctrl('p') => player_commands
+                    .context(PlayerCommandError { action })?,
+                Action::Quit => return Ok(()),
+                Action::Pause => player_commands
                     .send(Command::Pause)
-                    .context(PlayerCommandError { event })?,
-                Key::Char(']') => player_commands
+                    .context(PlayerCommandError { action })?,
+                Action::Forward5 => player_commands
                     .send(Command::Forward5)
-                    .context(PlayerCommandError { event })?,
-                Key::Char('[') => player_commands
+                    .context(PlayerCommandError { action })?,
+                Action::Backward5 => player_commands
                     .send(Command::Backward5)
-                    .context(PlayerCommandError { event })?,
-                Key::Ctrl('s') => player_commands
+                    .context(PlayerCommandError { action })?,
+                Action::Stop => player_commands
                     .send(Command::Stop)
-                    .context(PlayerCommandError { event })?,
-                Key::Ctrl('a') => {
+                    .context(PlayerCommandError { action })?,
+                Action::AddAll => {
                     if let View::TrackList(ref search) = state.view {
                         for track in search.cached_tracks.iter().cloned() {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
                                     player_commands
                                         .send(Command::Enqueue { track, url })
-                                        .context(PlayerCommandError { event })?;
+                                        .context(PlayerCommandError { action })?;
                                 }
                                 Err(err) => {
                                     log::error!("cannot get track {:?} url: {}", track, err);
@@ -406,7 +388,7 @@ impl App {
                         }
                     }
                 }
-                Key::Alt('p') => {
+                Action::ShowPlaylist => {
                     if let View::Playlist(view) = state.view {
                         state.view = *view.prev_view;
                     } else {
@@ -418,33 +400,33 @@ impl App {
                         });
                     }
                 }
-                Key::Alt('a') => {
+                Action::SwitchToAlbums => {
                     if let Err(err) = state.switch_to_album_search().await {
                         log::error!("cannot switch to album search: {}", err);
                     }
                 }
-                Key::Alt('t') => {
+                Action::SwitchToTracks => {
                     if let Err(err) = state.switch_to_track_search().await {
                         log::error!("cannot switch to track search: {}", err);
                     }
                 }
-                Key::Alt('s') => {
+                Action::SwitchToArtists => {
                     if let Err(err) = state.switch_to_artist().await {
                         log::error!("cannot switch to artist: {}", err);
                     }
                 }
-                Key::Char('\n') => match state.action().await {
+                Action::Enter => match state.action().await {
                     Ok(Some(cmd)) => {
                         player_commands
                             .send(cmd)
-                            .context(PlayerCommandError { event })?;
+                            .context(PlayerCommandError { action })?;
                     }
                     Ok(_) => {}
                     Err(err) => {
                         log::error!("cannot perform action {}", err);
                     }
                 },
-                Key::Char('\t') => {
+                Action::SwitchView => {
                     state.view = match state.view {
                         View::AlbumSearch(search) => View::TrackSearch(TrackSearch {
                             insert_buffer: search.insert_buffer,
@@ -462,12 +444,20 @@ impl App {
                         _ => continue,
                     }
                 }
-                Key::Char(c) => state.push_char(c),
-                Key::Backspace => state.backspace(),
+                Action::Char(c) => state.push_char(c),
+                Action::Backspace => state.backspace(),
                 _ => {
                     continue;
                 }
             }
+
+            *current_context.lock().unwrap() = match state.view {
+                View::AlbumSearch(_) | View::TrackSearch(_) | View::ArtistSearch(_) => {
+                    KeyContext::search()
+                }
+                View::TrackList(_) => KeyContext::tracklist(),
+                View::Playlist(_) => KeyContext::playlist(),
+            };
 
             drawer.redraw(&state.view).context(Drawer {
                 case: "loop update state",
