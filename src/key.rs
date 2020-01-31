@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use futures::channel::mpsc;
 use futures::prelude::*;
 use itertools::Itertools;
 use termion::event::{Event, Key};
-use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Context {
@@ -161,7 +161,7 @@ impl BindingConfig {
     }
 
     pub fn actions(self) -> (mpsc::UnboundedReceiver<Action>, Arc<Mutex<Context>>) {
-        let (mut action_tx, action_rx) = mpsc::unbounded_channel();
+        let (mut action_tx, action_rx) = mpsc::unbounded();
         let context = Arc::new(Mutex::new(Context::search()));
 
         let current_context = context.clone();

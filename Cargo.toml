@@ -12,23 +12,27 @@ keywords = ["audio", "tui", "music", "player"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]
-tokio = "0.2.0-alpha.6"
-reqwest = "0.10.0-alpha.1"
-unhtml = { version = "0.7.4", features = ["derive"] }
+tokio = {version = "0.2", features = ["stream", "rt-threaded", "macros", "io-std"] }
+futures = "0.3"
+reqwest = { version = "0.10", features = ["json"] }
+async-stream = "0.2"
+
+unhtml = { version = "0.7.5", features = ["derive"] }
 serde = { version = "1.0.101", features = ["derive"] }
-serde_json = "1.0.41"
-mpv = "0.2.3"
 serde-xml-rs = "0.3.1"
-tui = "0.6.2"
-termion = "1.5.3"
+toml = "0.5.5"
+
+mpv = "0.2.3"
+
+tui = "0.8.0"
+termion = "1.5.5"
+
 log = "0.4.8"
 flexi_logger = "0.14.4"
-snafu = "0.5.0"
-futures-preview = "0.3.0-alpha.19"
+snafu = "0.6.2"
 strum = "0.16.0"
 strum_macros = "0.16.0"
 itertools = "0.8.1"
-toml = "0.5.5"
 dirs = "2.0.2"
 
 [dev-dependencies]

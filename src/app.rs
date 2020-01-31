@@ -1,7 +1,7 @@
 use std::sync::{mpsc, Arc};
 
 use snafu::ResultExt;
-use tokio::prelude::*;
+use tokio::stream::StreamExt;
 
 use crate::config::Config;
 use crate::draw;
