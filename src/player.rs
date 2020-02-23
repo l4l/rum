@@ -39,7 +39,7 @@ impl MediaWorker {
         Ok(())
     }
 
-    fn pause(&mut self) -> Result<()> {
+    fn flip_pause(&mut self) -> Result<()> {
         self.is_paused ^= true;
         self.handler.set_property("pause", self.is_paused)?;
         Ok(())
@@ -62,28 +62,22 @@ impl MediaWorker {
                 mpv::Event::Shutdown | mpv::Event::Idle => {
                     return Ok(false);
                 }
-                mpv::Event::FileLoaded => {
-                    log::debug!("mpv: file loaded");
-                }
-                _ => {}
+                _ => log::debug!("mpv: {:?}", ev),
             }
         }
         Ok(true)
     }
 }
 
-#[derive(Debug)]
 pub enum Command {
     Enqueue { track: Track, url: String },
     Stop,
     NextTrack,
     PrevTrack,
-    Pause,
-    Forward5,
-    Backward5,
+    FlipPause,
+    Seek(i64),
 }
 
-#[derive(Debug)]
 pub struct PlayerState {
     playlist: Vec<Track>,
     current_position: usize,
@@ -158,19 +152,14 @@ impl Player {
                             self.state.lock().unwrap().current_position -= 1;
                         }
                     }
-                    Ok(Command::Pause) => {
-                        if let Err(err) = worker.pause() {
-                            log::error!("cannot pause track: {}", err);
+                    Ok(Command::FlipPause) => {
+                        if let Err(err) = worker.flip_pause() {
+                            log::error!("cannot pause/unpause track: {}", err);
                         }
                     }
-                    Ok(Command::Forward5) => {
-                        if let Err(err) = worker.time_seek(|pos| pos + 5) {
-                            log::error!("cannot seek time in forward (5 secs): {}", err);
-                        }
-                    }
-                    Ok(Command::Backward5) => {
-                        if let Err(err) = worker.time_seek(|pos| pos - 5) {
-                            log::error!("cannot seek time in backward (5 secs): {}", err);
+                    Ok(Command::Seek(x)) => {
+                        if let Err(err) = worker.time_seek(|pos| pos + x) {
+                            log::error!("cannot seek time ({} secs): {}", x, err);
                         }
                     }
                     Err(TryRecvError::Empty) => {}
@@ -183,7 +172,11 @@ impl Player {
                 if let Ok(pos) = worker.playlist_pos() {
                     let mut state = self.state.lock().unwrap();
                     state.current_position = pos;
-                } // TODO: else will be triggered on empty playlist
+                } else {
+                    let mut state = self.state.lock().unwrap();
+                    state.playlist.clear();
+                    state.current_position = 0;
+                }
             }
         });
 

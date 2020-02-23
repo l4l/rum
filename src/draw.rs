@@ -20,14 +20,12 @@ impl Drawer {
     pub fn new() -> Result<Self, Error> {
         let stdout = stdout().into_raw_mode()?;
         let backend = TermionBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let mut terminal = Terminal::new(backend)?;
 
-        let mut this = Self { terminal };
+        terminal.clear()?;
+        terminal.hide_cursor()?;
 
-        this.terminal.clear()?;
-        this.terminal.hide_cursor()?;
-
-        Ok(this)
+        Ok(Self { terminal })
     }
 
     pub fn redraw(&mut self, view: &app::View) -> Result<(), Error> {
@@ -213,18 +211,17 @@ impl app::Playlist {
 }
 
 fn cursored_line<'a>(
-    iter: impl IntoIterator<Item = impl ToString>,
+    iter: impl IntoIterator<Item = impl Into<String>>,
     cursor_pos: usize,
     chunk: Rect,
 ) -> impl Iterator<Item = Text<'a>> {
     let half = usize::from(chunk.height) / 2;
     let skip = cursor_pos.saturating_sub(half);
     iter.into_iter()
-        .skip(skip)
         .enumerate()
+        .skip(skip)
         .map(move |(i, line)| {
-            let line = line.to_string();
-            let style = if i + skip == cursor_pos {
+            let style = if i == cursor_pos {
                 Style::default()
                     .bg(Color::Gray)
                     .fg(Color::Black)
@@ -232,6 +229,6 @@ fn cursored_line<'a>(
             } else {
                 Default::default()
             };
-            Text::styled(line, style)
+            Text::styled(line.into(), style)
         })
 }

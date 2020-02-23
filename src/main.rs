@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::error::Error;
 use std::fs::File;
 
@@ -36,7 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .ok()
         })
-        .map(TryInto::try_into)
+        .map(|x| x.parse())
         .transpose()?
         .unwrap_or_else(Config::default);
 

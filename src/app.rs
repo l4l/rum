@@ -79,64 +79,52 @@ impl State {
     }
 
     fn pointer_down(&mut self) {
-        use View::*;
-        match &mut self.view {
-            ArtistSearch(search) => {
-                if search.cached_artists.len() > search.cursor + 1 {
-                    search.cursor += 1;
-                }
+        let (len, cursor) = match &mut self.view {
+            View::ArtistSearch(search) => (search.cached_artists.len(), &mut search.cursor),
+            View::AlbumSearch(search) => (search.cached_albums.len(), &mut search.cursor),
+            View::TrackList(search) => (search.cached_tracks.len(), &mut search.cursor),
+            View::TrackSearch(_) | View::Playlist(_) => {
+                return;
             }
-            AlbumSearch(search) => {
-                if search.cached_albums.len() > search.cursor + 1 {
-                    search.cursor += 1;
-                }
-            }
-            TrackSearch(_) | Playlist(_) => {}
-            TrackList(search) => {
-                if search.cached_tracks.len() > search.cursor + 1 {
-                    search.cursor += 1;
-                }
-            }
+        };
+
+        if len > *cursor + 1 {
+            *cursor += 1;
         }
     }
     fn pointer_up(&mut self) {
-        use View::*;
         match &mut self.view {
-            ArtistSearch(self::ArtistSearch { cursor, .. })
-            | AlbumSearch(self::AlbumSearch { cursor, .. })
-            | TrackList(self::TrackList { cursor, .. }) => {
-                if *cursor > 0 {
-                    *cursor -= 1;
-                }
+            View::ArtistSearch(ArtistSearch { cursor, .. })
+            | View::AlbumSearch(AlbumSearch { cursor, .. })
+            | View::TrackList(TrackList { cursor, .. }) => {
+                *cursor = cursor.saturating_sub(1);
             }
-            TrackSearch(_) | Playlist(_) => {}
+            View::TrackSearch(_) | View::Playlist(_) => {}
         }
     }
 
     fn push_char(&mut self, c: char) {
-        use View::*;
         match &mut self.view {
-            ArtistSearch(self::ArtistSearch { insert_buffer, .. })
-            | AlbumSearch(self::AlbumSearch { insert_buffer, .. })
-            | TrackSearch(self::TrackSearch { insert_buffer }) => insert_buffer.push(c),
-            TrackList(_) | Playlist(_) => {}
+            View::ArtistSearch(ArtistSearch { insert_buffer, .. })
+            | View::AlbumSearch(AlbumSearch { insert_buffer, .. })
+            | View::TrackSearch(TrackSearch { insert_buffer }) => insert_buffer.push(c),
+            View::TrackList(_) | View::Playlist(_) => {}
         }
     }
 
     fn backspace(&mut self) {
-        use View::*;
         match &mut self.view {
-            ArtistSearch(self::ArtistSearch { insert_buffer, .. })
-            | AlbumSearch(self::AlbumSearch { insert_buffer, .. })
-            | TrackSearch(self::TrackSearch { insert_buffer }) => {
+            View::ArtistSearch(ArtistSearch { insert_buffer, .. })
+            | View::AlbumSearch(AlbumSearch { insert_buffer, .. })
+            | View::TrackSearch(TrackSearch { insert_buffer }) => {
                 insert_buffer.pop();
             }
-            TrackList(_) => {
+            View::TrackList(_) => {
                 if let Some(previous) = self.prev_view.take() {
                     self.view = previous;
                 }
             }
-            Playlist(_) => {}
+            View::Playlist(_) => {}
         }
     }
 
@@ -360,23 +348,24 @@ impl App {
                     .send(Command::PrevTrack)
                     .context(PlayerCommandError { action })?,
                 Action::Quit => return Ok(()),
-                Action::Pause => player_commands
-                    .send(Command::Pause)
+                Action::FlipPause => player_commands
+                    .send(Command::FlipPause)
                     .context(PlayerCommandError { action })?,
                 Action::Forward5 => player_commands
-                    .send(Command::Forward5)
+                    .send(Command::Seek(5))
                     .context(PlayerCommandError { action })?,
                 Action::Backward5 => player_commands
-                    .send(Command::Backward5)
+                    .send(Command::Seek(-5))
                     .context(PlayerCommandError { action })?,
                 Action::Stop => player_commands
                     .send(Command::Stop)
                     .context(PlayerCommandError { action })?,
                 Action::AddAll => {
                     if let View::TrackList(ref search) = state.view {
-                        for track in search.cached_tracks.iter().cloned() {
+                        for track in search.cached_tracks.iter() {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
+                                    let track = track.clone();
                                     player_commands
                                         .send(Command::Enqueue { track, url })
                                         .context(PlayerCommandError { action })?;

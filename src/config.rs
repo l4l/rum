@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fmt;
+use std::str::FromStr;
 
 use snafu::ResultExt;
 use termion::event::{Event as InnerEvent, Key};
@@ -21,10 +21,10 @@ impl fmt::Display for UnknownEvent {
 
 impl std::error::Error for UnknownEvent {}
 
-impl<'a> TryFrom<&'a str> for Event {
-    type Error = UnknownEvent;
+impl FromStr for Event {
+    type Err = UnknownEvent;
 
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "ArrowUp" => Ok(Event(InnerEvent::Key(Key::Up))),
             "ArrowDown" => Ok(Event(InnerEvent::Key(Key::Down))),
@@ -43,36 +43,35 @@ impl<'a> TryFrom<&'a str> for Event {
                 const ALT_PREFIX: &str = "Alt+";
                 const FN_PREFIX: &str = "Fn+";
 
-                fn only_one_item<T>(mut iter: impl Iterator<Item = T> + Clone) -> Option<T> {
-                    if iter.clone().count() == 1 {
-                        Some(iter.next().unwrap())
+                fn parse_prefixed(
+                    haystack: &str,
+                    prefix: &str,
+                ) -> Option<Result<Event, UnknownEvent>> {
+                    if !haystack.starts_with(prefix) {
+                        return None;
+                    }
+
+                    let suffix = haystack.split_at(prefix.as_bytes().len()).1;
+
+                    if suffix.len() != 1 {
+                        Some(Err(UnknownEvent))
                     } else {
-                        None
+                        let c = suffix.chars().next().unwrap();
+                        Some(Ok(Event(InnerEvent::Key(Key::Char(c)))))
                     }
                 }
 
-                if s.starts_with(CTRL_PREFIX) {
-                    return only_one_item(s.split_at(CTRL_PREFIX.as_bytes().len()).1.chars())
-                        .map(Key::Ctrl)
-                        .map(InnerEvent::Key)
-                        .map(Event)
-                        .ok_or(UnknownEvent);
-                } else if s.starts_with(ALT_PREFIX) {
-                    return only_one_item(s.split_at(ALT_PREFIX.as_bytes().len()).1.chars())
-                        .map(Key::Alt)
-                        .map(InnerEvent::Key)
-                        .map(Event)
-                        .ok_or(UnknownEvent);
-                } else if s.starts_with(FN_PREFIX) {
-                    return only_one_item(s.split_at(FN_PREFIX.as_bytes().len()).1.bytes())
-                        .map(Key::F)
-                        .map(InnerEvent::Key)
-                        .map(Event)
-                        .ok_or(UnknownEvent);
-                } else if let Some(c) = only_one_item(s.chars()) {
-                    return Ok(Event(InnerEvent::Key(Key::Char(c))));
+                if let Some(ev) = parse_prefixed(s, CTRL_PREFIX) {
+                    ev
+                } else if let Some(ev) = parse_prefixed(s, ALT_PREFIX) {
+                    ev
+                } else if let Some(ev) = parse_prefixed(s, FN_PREFIX) {
+                    ev
+                } else if s.chars().count() == 1 {
+                    return Ok(Event(InnerEvent::Key(Key::Char(s.chars().next().unwrap()))));
+                } else {
+                    Err(UnknownEvent)
                 }
-                Err(UnknownEvent)
             }
         }
     }
@@ -112,19 +111,15 @@ macro_rules! try_toml {
     }};
 }
 
-impl TryFrom<String> for Config {
-    type Error = Error;
+impl FromStr for Config {
+    type Err = Error;
 
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        let table = if let toml::Value::Table(table) = s.parse().context(IncorrectToml {})? {
-            table
-        } else {
-            unreachable!()
-        };
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut config = Config {
             binding: BindingConfig::default(),
         };
-        for (key, value) in table.into_iter() {
+
+        for (key, value) in try_toml!(s.parse().context(IncorrectToml {})?; Table).into_iter() {
             match key.as_str() {
                 HOTKEY_TABLE => {
                     let value = try_toml!(value; Table);
@@ -172,7 +167,9 @@ fn parse_binding_config(table: toml::value::Table) -> Result<BindingConfig, Erro
             let action = ContextedAction { action, context };
 
             let value: String = try_toml!(value; String);
-            let event = Event::try_from(value.as_str())
+            let event = value
+                .as_str()
+                .parse::<Event>()
                 .context(IncorrectEvent { value })?
                 .0;
 
@@ -207,7 +204,7 @@ mod tests {
 "#
         .to_string();
 
-        let config = Config::try_from(sample_toml).unwrap();
+        let config = sample_toml.parse::<Config>().unwrap();
         println!("{:?}", config);
     }
 }
