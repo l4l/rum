@@ -147,6 +147,31 @@ impl Default for View {
     }
 }
 
+pub struct CursorMut<'a> {
+    cursor: &'a mut usize,
+    max_cursor: usize,
+}
+
+impl Drop for CursorMut<'_> {
+    fn drop(&mut self) {
+        *self.cursor = self.max_cursor.min(*self.cursor);
+    }
+}
+
+impl Deref for CursorMut<'_> {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cursor
+    }
+}
+
+impl DerefMut for CursorMut<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cursor
+    }
+}
+
 #[allow(unused)]
 impl View {
     pub fn name(&self) -> &'static str {
@@ -167,17 +192,28 @@ impl View {
         }
     }
 
-    pub fn cursor_mut(&mut self) -> Option<&mut usize> {
+    pub fn cursor_mut(&mut self) -> Option<CursorMut<'_>> {
+        let max_cursor = self.len().saturating_sub(1);
+
         match self {
-            View::ArtistSearch(search) => Some(&mut search.cursor),
-            View::AlbumSearch(search) => Some(&mut search.cursor),
-            View::TrackList(search) => Some(&mut search.cursor),
+            View::ArtistSearch(search) => Some(CursorMut {
+                cursor: &mut search.cursor,
+                max_cursor,
+            }),
+            View::AlbumSearch(search) => Some(CursorMut {
+                cursor: &mut search.cursor,
+                max_cursor,
+            }),
+            View::TrackList(search) => Some(CursorMut {
+                cursor: &mut search.cursor,
+                max_cursor,
+            }),
             View::Playlist(_) => None,
         }
     }
 
     pub fn reset_cursor(&mut self) {
-        if let Some(cursor) = self.cursor_mut() {
+        if let Some(mut cursor) = self.cursor_mut() {
             *cursor = 0;
         }
     }

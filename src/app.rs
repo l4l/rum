@@ -28,17 +28,13 @@ impl State {
     }
 
     fn pointer_down(&mut self) {
-        let len = self.main_view.len();
-
-        if let Some(cursor) = self.main_view.cursor_mut() {
-            if len > *cursor + 1 {
-                *cursor += 1;
-            }
+        if let Some(mut cursor) = self.main_view.cursor_mut() {
+            *cursor += 1;
         }
     }
 
     fn pointer_up(&mut self) {
-        if let Some(cursor) = self.main_view.cursor_mut() {
+        if let Some(mut cursor) = self.main_view.cursor_mut() {
             *cursor = cursor.saturating_sub(1);
         }
     }
