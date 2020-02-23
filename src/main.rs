@@ -8,6 +8,7 @@ mod config;
 mod draw;
 mod input;
 mod key;
+mod logger;
 mod meta;
 mod player;
 mod providers;

@@ -198,11 +198,11 @@ struct DownloadInfo {
 
 #[derive(Debug, snafu::Snafu)]
 pub enum Error {
-    #[snafu(display("http error, url: {}, err: {}", url, source))]
+    #[snafu(display("http err: {}", source))]
     HttpError { url: String, source: reqwest::Error },
     #[snafu(display("html error: {}", source))]
     HtmlError { source: unhtml::Error },
-    #[snafu(display("XmlError({})", source))]
+    #[snafu(display("xml error: {}", source))]
     XmlError {
         body: String,
         source: serde_xml_rs::Error,
