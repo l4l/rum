@@ -107,10 +107,9 @@ impl State {
         match &mut *self.main_view {
             View::AlbumSearch(search) => {
                 if let Some(album) = search.cached_albums.get(search.cursor) {
-                    let insert_buffer = std::mem::replace(&mut search.insert_buffer, String::new());
                     let artists = album.artists.clone();
 
-                    self.update_view(ArtistSearch::create(insert_buffer, artists));
+                    self.update_view(ArtistSearch::from(artists));
                 } else {
                     search.cursor = 0;
                 }
@@ -310,15 +309,9 @@ impl App {
                     }
                 },
                 Action::SwitchView => match state.main_view.view().clone() {
-                    View::AlbumSearch(search) => {
-                        state.update_view(TrackList::create(search.insert_buffer, vec![]))
-                    }
-                    View::TrackList(search) => {
-                        state.update_view(ArtistSearch::create(search.insert_buffer, vec![]))
-                    }
-                    View::ArtistSearch(search) => {
-                        state.update_view(AlbumSearch::create(search.insert_buffer, vec![]))
-                    }
+                    View::AlbumSearch(_) => state.update_view(TrackList::default()),
+                    View::TrackList(_) => state.update_view(ArtistSearch::default()),
+                    View::ArtistSearch(_) => state.update_view(AlbumSearch::default()),
                     _ => continue,
                 },
                 Action::Char(c) => state.push_char(c),
