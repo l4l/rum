@@ -12,7 +12,7 @@ keywords = ["audio", "tui", "music", "player"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]
-tokio = {version = "0.2", features = ["stream", "rt-threaded", "macros", "io-std"] }
+tokio = {version = "0.2", features = ["stream", "rt-threaded", "macros", "io-std", "time"] }
 futures = "0.3"
 reqwest = { version = "0.10", features = ["json"] }
 async-stream = "0.2"

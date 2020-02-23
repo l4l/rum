@@ -1,5 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 use std::result::Result as StdResult;
+use std::time::Duration;
 
 use futures::future::TryFutureExt;
 use reqwest::Client;
@@ -8,6 +9,8 @@ use strum_macros::Display;
 use unhtml::FromHtml;
 
 use crate::meta;
+
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(FromHtml)]
 struct ArtistRaw {
@@ -207,6 +210,8 @@ pub enum Error {
         body: String,
         source: serde_xml_rs::Error,
     },
+    #[snafu(display("timeouted"))]
+    Timeout { source: tokio::time::Elapsed },
 }
 
 pub type Result<T> = StdResult<T, Error>;
@@ -245,126 +250,134 @@ impl Provider {
     pub async fn artists_search(&self, text: &str) -> Result<meta::Artists> {
         let url = SearchType::Artists.search_url(text);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                ArtistsRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            ArtistsRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn artist_albums(&self, artist: &meta::Artist) -> Result<meta::Albums> {
         let url = format!("{}{}/albums", BASE_URL, artist.url);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                AlbumsRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            AlbumsRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn artist_tracks(&self, artist: &meta::Artist) -> Result<meta::Tracks> {
         let url = format!("{}{}/tracks", BASE_URL, artist.url);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                TracksRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            TracksRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn album_search(&self, text: &str) -> Result<meta::Albums> {
         let url = SearchType::Albums.search_url(text);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                AlbumsRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            AlbumsRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn track_search(&self, text: &str) -> Result<meta::Tracks> {
         let url = SearchType::Tracks.search_url(text);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                TracksRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            TracksRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn album_tracks(&self, album: &meta::Album) -> Result<meta::Tracks> {
         let url = format!("{}{}", BASE_URL, album.url);
 
-        self.client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|body| {
-                TracksRaw::from_html(&body)
-                    .map(Into::into)
-                    .context(HtmlError {})
-            })
+        tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|body| {
+            TracksRaw::from_html(&body)
+                .map(Into::into)
+                .context(HtmlError {})
+        })
     }
 
     pub async fn get_track_url(&self, track: &meta::Track) -> Result<String> {
         let url = format!("https://music.yandex.ru/api/v2.1/handlers/track/{}:{}/web-album-track-track-saved/download/m", track.track_id, track.album_id);
 
-        let url = self
-            .client
-            .get(&url)
-            .header(
-                "X-Retpath-Y",
-                format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", track.album_id),
-            )
-            .send()
-            .and_then(|r| r.json::<BalancerResponse>())
-            .await
-            .context(HttpError { url })?
-            .src;
+        let url = tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client
+                .get(&url)
+                .header(
+                    "X-Retpath-Y",
+                    format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", track.album_id),
+                )
+                .send()
+                .and_then(|r| r.json::<BalancerResponse>()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })?
+        .src;
 
-        let info = self
-            .client
-            .get(&url)
-            .send()
-            .and_then(|r| r.text())
-            .await
-            .context(HttpError { url })
-            .and_then(|response| {
-                serde_xml_rs::from_str::<DownloadInfo>(&response)
-                    .context(XmlError { body: response })
-            })?;
+        let info = tokio::time::timeout(
+            REQUEST_TIMEOUT,
+            self.client.get(&url).send().and_then(|r| r.text()),
+        )
+        .await
+        .context(Timeout {})?
+        .context(HttpError { url })
+        .and_then(|response| {
+            serde_xml_rs::from_str::<DownloadInfo>(&response).context(XmlError { body: response })
+        })?;
 
         Ok(format!(
             "https://{}/get-mp3/11111111111111111111111111111111/{}{}?track-id={}&play=false",
