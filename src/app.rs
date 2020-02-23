@@ -8,13 +8,13 @@ use crate::draw;
 use crate::key::{Action, Context as KeyContext};
 use crate::player::{self, Command};
 use crate::providers::Provider;
-use crate::view::{AlbumSearch, ArtistSearch, Playlist, TrackList, View};
+use crate::view::{AlbumSearch, ArtistSearch, MainView, Playlist, TrackList, View};
 
 struct State {
     provider: Provider,
     player_state: player::State,
     prev_view: Option<View>,
-    view: View,
+    main_view: MainView,
 }
 
 impl State {
@@ -23,52 +23,47 @@ impl State {
             provider,
             player_state,
             prev_view: None,
-            view: View::default(),
+            main_view: MainView::default(),
         }
     }
 
     fn pointer_down(&mut self) {
-        let len = self.view.len();
+        let len = self.main_view.len();
 
-        if let Some(cursor) = self.view.cursor_mut() {
+        if let Some(cursor) = self.main_view.cursor_mut() {
             if len > *cursor + 1 {
                 *cursor += 1;
             }
         }
     }
+
     fn pointer_up(&mut self) {
-        if let Some(cursor) = self.view.cursor_mut() {
+        if let Some(cursor) = self.main_view.cursor_mut() {
             *cursor = cursor.saturating_sub(1);
         }
     }
 
     fn push_char(&mut self, c: char) {
-        if let Some(insert_buffer) = self.view.insert_buffer_mut() {
-            insert_buffer.push(c);
-        }
+        self.main_view.insert_buffer_mut().push(c);
     }
 
     fn backspace(&mut self) {
-        if let Some(insert_buffer) = self.view.insert_buffer_mut() {
-            insert_buffer.pop();
-        } else {
-            self.restore_view(); // awkward
-        }
+        self.main_view.insert_buffer_mut().pop();
     }
 
     fn restore_view(&mut self) {
         if let Some(view) = self.prev_view.take() {
-            self.view = view;
+            self.main_view.replace_view(view);
         }
     }
 
     fn update_view(&mut self, new_view: impl Into<View>) {
-        self.prev_view = Some(std::mem::replace(&mut self.view, new_view.into()));
+        self.prev_view = self.main_view.replace_view(new_view.into()).into();
     }
 
     #[allow(clippy::single_match)]
     async fn switch_to_album_search(&mut self) -> Result<(), crate::providers::Error> {
-        match &mut self.view {
+        match &mut *self.main_view {
             View::ArtistSearch(search) => {
                 if let Some(artist) = search.cached_artists.get(search.cursor) {
                     let albums = self.provider.artist_albums(&artist).await?.albums;
@@ -85,7 +80,7 @@ impl State {
 
     #[allow(clippy::single_match)]
     async fn switch_to_track_search(&mut self) -> Result<(), crate::providers::Error> {
-        match &mut self.view {
+        match &mut *self.main_view {
             View::ArtistSearch(search) => {
                 if let Some(artist) = search.cached_artists.get(search.cursor) {
                     let tracks = self
@@ -113,7 +108,7 @@ impl State {
     }
 
     async fn switch_to_artist(&mut self) -> Result<(), crate::providers::Error> {
-        match &mut self.view {
+        match &mut *self.main_view {
             View::AlbumSearch(search) => {
                 if let Some(album) = search.cached_albums.get(search.cursor) {
                     let insert_buffer = std::mem::replace(&mut search.insert_buffer, String::new());
@@ -139,26 +134,16 @@ impl State {
     }
 
     async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
-        match &mut self.view {
-            View::ArtistSearch(search) if !search.insert_buffer.is_empty() => {
-                search.cached_artists = self
-                    .provider
-                    .artists_search(&search.insert_buffer)
-                    .await?
-                    .artists;
-                search.insert_buffer.clear();
+        match self.main_view.view_and_buffer_mut() {
+            (View::ArtistSearch(search), insert_buffer) if !insert_buffer.is_empty() => {
+                search.cached_artists = self.provider.artists_search(&insert_buffer).await?.artists;
+                insert_buffer.clear();
             }
-            View::AlbumSearch(search) if !search.insert_buffer.is_empty() => {
-                search.cached_albums = self
-                    .provider
-                    .album_search(&search.insert_buffer)
-                    .await?
-                    .albums;
-                search.insert_buffer.clear();
+            (View::AlbumSearch(search), insert_buffer) if !insert_buffer.is_empty() => {
+                search.cached_albums = self.provider.album_search(&insert_buffer).await?.albums;
+                insert_buffer.clear();
             }
-            View::AlbumSearch(search)
-                if search.insert_buffer.is_empty() && !search.cached_albums.is_empty() =>
-            {
+            (View::AlbumSearch(search), _) if !search.cached_albums.is_empty() => {
                 let album = &search.cached_albums[search.cursor];
                 let tracks = self
                     .provider
@@ -180,19 +165,14 @@ impl State {
 
                 self.update_view(TrackList::from(tracks));
             }
-            View::TrackList(search) => {
-                let tracks = self
-                    .provider
-                    .track_search(&search.insert_buffer)
-                    .await?
-                    .tracks;
-                if !tracks.is_empty() {
-                    self.update_view(TrackList::from(tracks));
-                } else {
-                    let track = search.cached_tracks[search.cursor].clone();
-                    let url = self.provider.get_track_url(&track).await?;
-                    return Ok(Some(Command::Enqueue { track, url }));
-                }
+            (View::TrackList(_), insert_buffer) if !insert_buffer.is_empty() => {
+                let tracks = self.provider.track_search(insert_buffer).await?.tracks;
+                self.update_view(TrackList::from(tracks));
+            }
+            (View::TrackList(search), _) => {
+                let track = search.cached_tracks[search.cursor].clone();
+                let url = self.provider.get_track_url(&track).await?;
+                return Ok(Some(Command::Enqueue { track, url }));
             }
             _ => {}
         }
@@ -249,7 +229,7 @@ impl App {
             case: "create context",
         })?;
 
-        drawer.redraw(&state.view).context(Drawer {
+        drawer.redraw(&state.main_view).context(Drawer {
             case: "initial draw",
         })?;
 
@@ -279,7 +259,7 @@ impl App {
                     .send(Command::Stop)
                     .context(PlayerCommandError { action })?,
                 Action::AddAll => {
-                    if let View::TrackList(ref search) = state.view {
+                    if let View::TrackList(ref search) = *state.main_view {
                         for track in search.cached_tracks.iter() {
                             match state.provider.get_track_url(&track).await {
                                 Ok(url) => {
@@ -296,7 +276,7 @@ impl App {
                     }
                 }
                 Action::ShowPlaylist => {
-                    if let View::Playlist(_) = state.view {
+                    if let View::Playlist(_) = *state.main_view {
                         state.restore_view();
                     } else {
                         let player_state = state.player_state.lock().unwrap();
@@ -333,7 +313,7 @@ impl App {
                         log::error!("cannot perform action {}", err);
                     }
                 },
-                Action::SwitchView => match state.view.clone() {
+                Action::SwitchView => match state.main_view.view().clone() {
                     View::AlbumSearch(search) => {
                         state.update_view(TrackList::create(search.insert_buffer, vec![]))
                     }
@@ -352,13 +332,13 @@ impl App {
                 }
             }
 
-            *current_context.lock().unwrap() = match state.view {
+            *current_context.lock().unwrap() = match state.main_view.view() {
                 View::AlbumSearch(_) | View::ArtistSearch(_) => KeyContext::search(),
                 View::TrackList(_) => KeyContext::search() | KeyContext::tracklist(),
                 View::Playlist(_) => KeyContext::playlist(),
             };
 
-            drawer.redraw(&state.view).context(Drawer {
+            drawer.redraw(&state.main_view).context(Drawer {
                 case: "loop update state",
             })?;
         }

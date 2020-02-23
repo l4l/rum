@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use derive_more::From;
 
 use crate::meta::{Album, Artist, Track};
@@ -6,6 +8,48 @@ const DEFAULT_INSERT_BUFFER_CAPACITY: usize = 128;
 
 fn insert_buffer() -> String {
     String::with_capacity(DEFAULT_INSERT_BUFFER_CAPACITY)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MainView {
+    insert_buffer: String,
+    view: View,
+}
+
+impl MainView {
+    pub fn replace_view(&mut self, view: View) -> View {
+        std::mem::replace(&mut self.view, view)
+    }
+
+    pub fn insert_buffer(&self) -> &str {
+        &self.insert_buffer
+    }
+
+    pub fn insert_buffer_mut(&mut self) -> &mut String {
+        &mut self.insert_buffer
+    }
+
+    pub fn view_and_buffer_mut(&mut self) -> (&mut View, &mut String) {
+        (&mut self.view, &mut self.insert_buffer)
+    }
+
+    pub fn view(&self) -> &View {
+        &self.view
+    }
+}
+
+impl Deref for MainView {
+    type Target = View;
+
+    fn deref(&self) -> &Self::Target {
+        self.view()
+    }
+}
+
+impl DerefMut for MainView {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.view
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +155,15 @@ impl View {
             View::AlbumSearch(_) => "AlbumSearch",
             View::TrackList(_) => "TrackList",
             View::Playlist(_) => "Playlist",
+        }
+    }
+
+    pub fn cursor(&self) -> Option<usize> {
+        match self {
+            View::ArtistSearch(search) => Some(search.cursor),
+            View::AlbumSearch(search) => Some(search.cursor),
+            View::TrackList(search) => Some(search.cursor),
+            View::Playlist(_) => None,
         }
     }
 
