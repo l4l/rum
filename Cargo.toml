@@ -34,6 +34,7 @@ strum = "0.16.0"
 strum_macros = "0.16.0"
 itertools = "0.8.1"
 dirs = "2.0.2"
+derive_more = "0.99.3"
 
 [dev-dependencies]
 quickcheck = "0.9.0"

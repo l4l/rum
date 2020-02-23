@@ -11,6 +11,7 @@ mod key;
 mod meta;
 mod player;
 mod providers;
+mod view;
 
 use crate::config::Config;
 

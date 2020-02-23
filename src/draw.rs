@@ -8,7 +8,7 @@ use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, List, Paragraph, Text, Widget};
 use tui::Terminal;
 
-use crate::app;
+use crate::view;
 
 type Backend = TermionBackend<RawTerminal<Stdout>>;
 
@@ -28,28 +28,28 @@ impl Drawer {
         Ok(Self { terminal })
     }
 
-    pub fn redraw(&mut self, view: &app::View) -> Result<(), Error> {
+    pub fn redraw(&mut self, view: &view::View) -> Result<(), Error> {
         match &view {
-            app::View::ArtistSearch(search) => self.terminal.draw(|mut frame| {
+            view::View::ArtistSearch(search) => self.terminal.draw(|mut frame| {
                 search.draw(&mut frame);
             }),
-            app::View::AlbumSearch(search) => self.terminal.draw(|mut frame| {
+            view::View::AlbumSearch(search) => self.terminal.draw(|mut frame| {
                 search.draw(&mut frame);
             }),
-            app::View::TrackSearch(search) => self.terminal.draw(|mut frame| {
+            view::View::TrackSearch(search) => self.terminal.draw(|mut frame| {
                 search.draw(&mut frame);
             }),
-            app::View::TrackList(list) => self.terminal.draw(|mut frame| {
+            view::View::TrackList(list) => self.terminal.draw(|mut frame| {
                 list.draw(&mut frame);
             }),
-            app::View::Playlist(playlist) => self.terminal.draw(|mut frame| {
+            view::View::Playlist(playlist) => self.terminal.draw(|mut frame| {
                 playlist.draw(&mut frame);
             }),
         }
     }
 }
 
-impl app::ArtistSearch {
+impl view::ArtistSearch {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -81,7 +81,7 @@ impl app::ArtistSearch {
     }
 }
 
-impl app::AlbumSearch {
+impl view::AlbumSearch {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -138,7 +138,7 @@ impl app::AlbumSearch {
     }
 }
 
-impl app::TrackSearch {
+impl view::TrackSearch {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -162,7 +162,7 @@ impl app::TrackSearch {
     }
 }
 
-impl app::TrackList {
+impl view::TrackList {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -186,7 +186,7 @@ impl app::TrackList {
     }
 }
 
-impl app::Playlist {
+impl view::Playlist {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)

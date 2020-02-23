@@ -68,7 +68,8 @@ impl FromStr for Event {
                 } else if let Some(ev) = parse_prefixed(s, FN_PREFIX) {
                     ev
                 } else if s.chars().count() == 1 {
-                    return Ok(Event(InnerEvent::Key(Key::Char(s.chars().next().unwrap()))));
+                    let c = s.chars().next().unwrap();
+                    Ok(Event(InnerEvent::Key(Key::Char(c))))
                 } else {
                     Err(UnknownEvent)
                 }
