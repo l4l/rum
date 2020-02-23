@@ -6,7 +6,7 @@ const MAX_TTL: usize = 4;
 
 #[derive(Default)]
 pub struct Logger {
-    line: Option<String>,
+    line: Option<(Level, String)>,
     ticks_lived: usize,
 }
 
@@ -14,10 +14,10 @@ impl Logger {
     pub fn log(&mut self, level: Level, context: &str, line: impl Display) {
         self.ticks_lived = 0;
         log::log!(level, "{}: {}", context, line);
-        self.line = Some(format!("{}", line));
+        self.line = Some((level, format!("{}", line)));
     }
 
-    pub fn log_lines(&mut self) -> impl Iterator<Item = &String> {
+    pub fn log_lines(&mut self) -> impl Iterator<Item = &(Level, String)> {
         self.ticks_lived += 1;
         if self.ticks_lived > MAX_TTL {
             self.line.take();

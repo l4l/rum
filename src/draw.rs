@@ -1,5 +1,6 @@
 use std::io::{stdout, Error, Stdout};
 
+use log::Level;
 use termion::raw::{IntoRawMode, RawTerminal};
 use tui::backend::TermionBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -31,7 +32,7 @@ impl Drawer {
     pub fn redraw<'a>(
         &mut self,
         main_view: &view::MainView,
-        log_lines: impl Iterator<Item = &'a String>,
+        log_lines: impl Iterator<Item = &'a (Level, String)>,
     ) -> Result<(), Error> {
         self.terminal.draw(|mut frame| {
             let constraints = if frame.size().height < 20 {
@@ -66,9 +67,22 @@ impl Drawer {
             main_view.view().draw_at(&mut frame, chunks[1]);
 
             if chunks.len() >= 3 {
-                let line = log_lines.last().map(|s| s.as_str()).unwrap_or("");
+                let line = log_lines
+                    .last()
+                    .map(|(level, s)| {
+                        Text::styled(
+                            s.as_str(),
+                            Style::default().modifier(Modifier::BOLD).fg(match level {
+                                Level::Info => Color::Green,
+                                Level::Warn => Color::Yellow,
+                                Level::Error => Color::Red,
+                                _ => Color::Gray,
+                            }),
+                        )
+                    })
+                    .unwrap_or_else(|| Text::raw(""));
 
-                Paragraph::new([Text::raw(line)].iter())
+                Paragraph::new([line].iter())
                     .wrap(true)
                     .block(
                         Block::default().title("Log").title_style(
