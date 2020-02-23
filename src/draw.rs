@@ -28,36 +28,56 @@ impl Drawer {
         Ok(Self { terminal })
     }
 
-    pub fn redraw(&mut self, view: &view::MainView) -> Result<(), Error> {
+    pub fn redraw<'a>(
+        &mut self,
+        main_view: &view::MainView,
+        log_lines: impl Iterator<Item = &'a String>,
+    ) -> Result<(), Error> {
         self.terminal.draw(|mut frame| {
-            view.draw(&mut frame);
+            let constraints = if frame.size().height < 20 {
+                [Constraint::Length(3), Constraint::Min(0)].as_ref()
+            } else {
+                &[
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(6),
+                ]
+            };
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints(constraints)
+                .split(frame.size());
+            let texts = [Text::styled(
+                main_view.insert_buffer(),
+                Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
+            )];
+            Paragraph::new(texts.iter())
+                .block(
+                    Block::default()
+                        .title(main_view.view().name())
+                        .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
+                        .borders(Borders::ALL),
+                )
+                .alignment(Alignment::Center)
+                .wrap(true)
+                .render(&mut frame, chunks[0]);
+
+            main_view.view().draw_at(&mut frame, chunks[1]);
+
+            if chunks.len() >= 3 {
+                let line = log_lines.last().map(|s| s.as_str()).unwrap_or("");
+
+                Paragraph::new([Text::raw(line)].iter())
+                    .wrap(true)
+                    .block(
+                        Block::default().title("Log").title_style(
+                            Style::default().fg(Color::Magenta).modifier(Modifier::BOLD),
+                        ),
+                    )
+                    .render(&mut frame, chunks[2]);
+            }
         })
-    }
-}
-
-impl view::MainView {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-        let texts = [Text::styled(
-            self.insert_buffer(),
-            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
-        )];
-        Paragraph::new(texts.iter())
-            .block(
-                Block::default()
-                    .title(self.view().name())
-                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
-                    .borders(Borders::ALL),
-            )
-            .alignment(Alignment::Center)
-            .wrap(true)
-            .render(&mut frame, chunks[0]);
-
-        self.view().draw_at(frame, chunks[1])
     }
 }
 

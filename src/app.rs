@@ -1,11 +1,13 @@
 use std::sync::{mpsc, Arc};
 
+use log::Level;
 use snafu::ResultExt;
 use tokio::stream::StreamExt;
 
 use crate::config::Config;
 use crate::draw;
 use crate::key::{Action, Context as KeyContext};
+use crate::logger::Logger;
 use crate::player::{self, Command};
 use crate::providers::Provider;
 use crate::view::{AlbumSearch, ArtistSearch, MainView, Playlist, TrackList, View};
@@ -220,13 +222,16 @@ impl App {
         } = self;
 
         let mut state = State::new(provider, player_state);
+        let mut logger = Logger::default();
         let mut drawer = draw::Drawer::new().context(Drawer {
             case: "create context",
         })?;
 
-        drawer.redraw(&state.main_view).context(Drawer {
-            case: "initial draw",
-        })?;
+        drawer
+            .redraw(&state.main_view, logger.log_lines())
+            .context(Drawer {
+                case: "initial draw",
+            })?;
 
         let (mut events, current_context) = config.binding.actions();
 
@@ -263,9 +268,11 @@ impl App {
                                         .send(Command::Enqueue { track, url })
                                         .context(PlayerCommandError { action })?;
                                 }
-                                Err(err) => {
-                                    log::error!("cannot get track {:?} url: {}", track, err);
-                                }
+                                Err(err) => logger.log(
+                                    Level::Error,
+                                    format!("cannot get track: {:?}", track).as_str(),
+                                    err,
+                                ),
                             }
                         }
                     }
@@ -284,17 +291,17 @@ impl App {
                 }
                 Action::SwitchToAlbums => {
                     if let Err(err) = state.switch_to_album_search().await {
-                        log::error!("cannot switch to album search: {}", err);
+                        logger.log(Level::Error, "cannot switch to album search", err);
                     }
                 }
                 Action::SwitchToTracks => {
                     if let Err(err) = state.switch_to_track_search().await {
-                        log::error!("cannot switch to track search: {}", err);
+                        logger.log(Level::Error, "cannot switch to track search", err);
                     }
                 }
                 Action::SwitchToArtists => {
                     if let Err(err) = state.switch_to_artist().await {
-                        log::error!("cannot switch to artist: {}", err);
+                        logger.log(Level::Error, "cannot switch to artist search", err);
                     }
                 }
                 Action::Enter => match state.action().await {
@@ -304,9 +311,7 @@ impl App {
                             .context(PlayerCommandError { action })?;
                     }
                     Ok(_) => {}
-                    Err(err) => {
-                        log::error!("cannot perform action {}", err);
-                    }
+                    Err(err) => logger.log(Level::Error, "cannot perform action", err),
                 },
                 Action::SwitchView => match state.main_view.view().clone() {
                     View::AlbumSearch(_) => state.update_view(TrackList::default()),
@@ -327,9 +332,11 @@ impl App {
                 View::Playlist(_) => KeyContext::playlist(),
             };
 
-            drawer.redraw(&state.main_view).context(Drawer {
-                case: "loop update state",
-            })?;
+            drawer
+                .redraw(&state.main_view, logger.log_lines())
+                .context(Drawer {
+                    case: "loop update state",
+                })?;
         }
         Ok(())
     }
