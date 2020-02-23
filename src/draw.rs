@@ -36,9 +36,6 @@ impl Drawer {
             view::View::AlbumSearch(search) => self.terminal.draw(|mut frame| {
                 search.draw(&mut frame);
             }),
-            view::View::TrackSearch(search) => self.terminal.draw(|mut frame| {
-                search.draw(&mut frame);
-            }),
             view::View::TrackList(list) => self.terminal.draw(|mut frame| {
                 list.draw(&mut frame);
             }),
@@ -138,13 +135,14 @@ impl view::AlbumSearch {
     }
 }
 
-impl view::TrackSearch {
+impl view::TrackList {
     fn draw(&self, mut frame: &mut Frame<Backend>) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
             .split(frame.size());
+
         let texts = [Text::styled(
             &self.insert_buffer,
             Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
@@ -159,17 +157,6 @@ impl view::TrackSearch {
             .alignment(Alignment::Center)
             .wrap(true)
             .render(&mut frame, chunks[0]);
-    }
-}
-
-impl view::TrackList {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-
         List::new(cursored_line(
             self.cached_tracks.iter().map(|track| {
                 format!(

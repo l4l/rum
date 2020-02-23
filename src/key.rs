@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::BitOr;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc;
@@ -59,6 +60,18 @@ impl Context {
             is_search: true,
             is_tracklist: true,
             is_playlist: true,
+        }
+    }
+}
+
+impl BitOr for Context {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self {
+            is_search: self.is_search | rhs.is_search,
+            is_tracklist: self.is_tracklist | rhs.is_tracklist,
+            is_playlist: self.is_playlist | rhs.is_playlist,
         }
     }
 }

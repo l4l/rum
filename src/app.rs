@@ -8,7 +8,7 @@ use crate::draw;
 use crate::key::{Action, Context as KeyContext};
 use crate::player::{self, Command};
 use crate::providers::Provider;
-use crate::view::{AlbumSearch, ArtistSearch, Playlist, TrackList, TrackSearch, View};
+use crate::view::{AlbumSearch, ArtistSearch, Playlist, TrackList, View};
 
 struct State {
     provider: Provider,
@@ -100,9 +100,9 @@ impl State {
                                 .insert(0, artist.clone());
                             track
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    self.update_view(TrackList::create(tracks));
+                    self.update_view(TrackList::from(tracks));
                 } else {
                     search.cursor = 0;
                 }
@@ -176,24 +176,23 @@ impl State {
                         }
                         track
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                self.update_view(TrackList::create(tracks));
+                self.update_view(TrackList::from(tracks));
             }
-            View::TrackSearch(search) => {
+            View::TrackList(search) => {
                 let tracks = self
                     .provider
                     .track_search(&search.insert_buffer)
                     .await?
                     .tracks;
                 if !tracks.is_empty() {
-                    self.update_view(TrackList::create(tracks));
+                    self.update_view(TrackList::from(tracks));
+                } else {
+                    let track = search.cached_tracks[search.cursor].clone();
+                    let url = self.provider.get_track_url(&track).await?;
+                    return Ok(Some(Command::Enqueue { track, url }));
                 }
-            }
-            View::TrackList(search) => {
-                let track = search.cached_tracks[search.cursor].clone();
-                let url = self.provider.get_track_url(&track).await?;
-                return Ok(Some(Command::Enqueue { track, url }));
             }
             _ => {}
         }
@@ -336,9 +335,9 @@ impl App {
                 },
                 Action::SwitchView => match state.view.clone() {
                     View::AlbumSearch(search) => {
-                        state.update_view(TrackSearch::create(search.insert_buffer))
+                        state.update_view(TrackList::create(search.insert_buffer, vec![]))
                     }
-                    View::TrackSearch(search) => {
+                    View::TrackList(search) => {
                         state.update_view(ArtistSearch::create(search.insert_buffer, vec![]))
                     }
                     View::ArtistSearch(search) => {
@@ -354,10 +353,8 @@ impl App {
             }
 
             *current_context.lock().unwrap() = match state.view {
-                View::AlbumSearch(_) | View::TrackSearch(_) | View::ArtistSearch(_) => {
-                    KeyContext::search()
-                }
-                View::TrackList(_) => KeyContext::tracklist(),
+                View::AlbumSearch(_) | View::ArtistSearch(_) => KeyContext::search(),
+                View::TrackList(_) => KeyContext::search() | KeyContext::tracklist(),
                 View::Playlist(_) => KeyContext::playlist(),
             };
 

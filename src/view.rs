@@ -55,28 +55,25 @@ impl From<Vec<Album>> for AlbumSearch {
 }
 
 #[derive(Debug, Clone)]
-pub struct TrackSearch {
-    pub insert_buffer: String,
-}
-
-impl TrackSearch {
-    pub fn create(insert_buffer: String) -> Self {
-        Self { insert_buffer }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct TrackList {
+    pub insert_buffer: String,
     pub cached_tracks: Vec<Track>,
     pub cursor: usize,
 }
 
 impl TrackList {
-    pub fn create(cached_tracks: Vec<Track>) -> Self {
+    pub fn create(insert_buffer: String, cached_tracks: Vec<Track>) -> Self {
         Self {
+            insert_buffer,
             cached_tracks,
             cursor: 0,
         }
+    }
+}
+
+impl From<Vec<Track>> for TrackList {
+    fn from(tracks: Vec<Track>) -> Self {
+        Self::create(insert_buffer(), tracks)
     }
 }
 
@@ -96,7 +93,6 @@ impl Playlist {
 pub enum View {
     ArtistSearch(ArtistSearch),
     AlbumSearch(AlbumSearch),
-    TrackSearch(TrackSearch),
     TrackList(TrackList),
     Playlist(Playlist),
 }
@@ -114,7 +110,6 @@ impl View {
             View::ArtistSearch(_) => "ArtistSearch",
             View::AlbumSearch(_) => "AlbumSearch",
             View::TrackList(_) => "TrackList",
-            View::TrackSearch(_) => "TrackSearch",
             View::Playlist(_) => "Playlist",
         }
     }
@@ -124,7 +119,7 @@ impl View {
             View::ArtistSearch(search) => Some(&mut search.cursor),
             View::AlbumSearch(search) => Some(&mut search.cursor),
             View::TrackList(search) => Some(&mut search.cursor),
-            View::TrackSearch(_) | View::Playlist(_) => None,
+            View::Playlist(_) => None,
         }
     }
 
@@ -139,7 +134,7 @@ impl View {
             View::ArtistSearch(search) => search.cached_artists.len(),
             View::AlbumSearch(search) => search.cached_albums.len(),
             View::TrackList(search) => search.cached_tracks.len(),
-            View::TrackSearch(_) | View::Playlist(_) => 0,
+            View::Playlist(_) => 0,
         }
     }
 
@@ -147,8 +142,8 @@ impl View {
         match self {
             View::ArtistSearch(search) => Some(&mut search.insert_buffer),
             View::AlbumSearch(search) => Some(&mut search.insert_buffer),
-            View::TrackSearch(search) => Some(&mut search.insert_buffer),
-            View::TrackList(_) | View::Playlist(_) => None,
+            View::TrackList(search) => Some(&mut search.insert_buffer),
+            View::Playlist(_) => None,
         }
     }
 }
