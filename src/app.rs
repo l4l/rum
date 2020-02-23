@@ -275,6 +275,7 @@ impl App {
                                 ),
                             }
                         }
+                        logger.log(Level::Info, "ok", "all tracks are added to queue");
                     }
                 }
                 Action::ShowPlaylist => {
@@ -305,12 +306,14 @@ impl App {
                     }
                 }
                 Action::Enter => match state.action().await {
-                    Ok(Some(cmd)) => {
-                        player_commands
-                            .send(cmd)
-                            .context(PlayerCommandError { action })?;
+                    Ok(cmd) => {
+                        if let Some(cmd) = cmd {
+                            player_commands
+                                .send(cmd)
+                                .context(PlayerCommandError { action })?;
+                        }
+                        logger.log(Level::Info, "ok", "completed");
                     }
-                    Ok(_) => {}
                     Err(err) => logger.log(Level::Error, "cannot perform action", err),
                 },
                 Action::SwitchView => match state.main_view.view().clone() {
