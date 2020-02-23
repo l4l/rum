@@ -322,11 +322,14 @@ impl App {
                     View::ArtistSearch(_) => state.update_view(AlbumSearch::default()),
                     _ => continue,
                 },
+                Action::PrevView => {
+                    if let Some(view) = state.prev_view.take() {
+                        state.main_view.replace_view(view);
+                    }
+                }
                 Action::Char(c) => state.push_char(c),
                 Action::Backspace => state.backspace(),
-                _ => {
-                    continue;
-                }
+                Action::Refresh => continue,
             }
 
             *current_context.lock().unwrap() = match state.main_view.view() {
