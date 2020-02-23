@@ -43,7 +43,7 @@ Default hotkeys are the following:
 
 - Arrow Up/Down - scroll up/down displayed list;
 - Arrow Left/Right - switch to previous/next track;
-- Backspace (at track list view) - display back to search panel;
+- Alt+Esc - display back to previous view;
 - Tab - switch between search types (currently track & album search are available);
 - Ctrl+a (at track list view) - add all tracks to playlist;
 - Ctrl+s - stop playback and clear playlist;

@@ -95,6 +95,7 @@ pub enum Action {
     SwitchToArtists,
     Enter,
     SwitchView,
+    PrevView,
     #[serde(skip)]
     Char(char),
     Backspace,
@@ -173,6 +174,7 @@ impl BindingConfig {
             Key::Char('\t') => Some(Action::SwitchView),
             Key::Char(c) => Some(Action::Char(*c)),
             Key::Backspace => Some(Action::Backspace),
+            Key::Alt('\x1b') => Some(Action::PrevView),
             _ => None,
         }
     }
