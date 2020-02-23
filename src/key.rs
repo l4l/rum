@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::ops::BitOr;
 use std::sync::{Arc, Mutex};
 
+use futures::channel::mpsc;
 use futures::prelude::*;
-use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use termion::event::{Event, Key};
-use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Context {
@@ -63,14 +64,26 @@ impl Context {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+impl BitOr for Context {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self {
+            is_search: self.is_search | rhs.is_search,
+            is_tracklist: self.is_tracklist | rhs.is_tracklist,
+            is_playlist: self.is_playlist | rhs.is_playlist,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     Quit,
     PointerUp,
     PointerDown,
     NextTrack,
     PrevTrack,
-    Pause,
+    FlipPause,
     Stop,
     Forward5,
     Backward5,
@@ -105,11 +118,9 @@ impl From<HashMap<Event, Vec<ContextedAction>>> for BindingConfig {
                 .into_iter()
                 .filter_map(|(key, mut actions)| {
                     actions.sort_by_key(|v| v.context);
-                    let actions: Vec<_> = actions
-                        .into_iter()
-                        .filter(|action| action.context.is_valid())
-                        .dedup()
-                        .collect();
+                    actions.retain(|action| action.context.is_valid());
+                    actions.dedup();
+
                     if actions.is_empty() {
                         None
                     } else {
@@ -136,32 +147,38 @@ impl BindingConfig {
 
     // TODO: use context here
     fn default_action(event: &Event) -> Option<Action> {
+        let event = if let Event::Key(event) = event {
+            event
+        } else {
+            return None;
+        };
+
         match event {
-            Event::Key(Key::Up) => Some(Action::PointerUp),
-            Event::Key(Key::Down) => Some(Action::PointerDown),
-            Event::Key(Key::Right) => Some(Action::NextTrack),
-            Event::Key(Key::Left) => Some(Action::PrevTrack),
-            Event::Key(Key::Delete) | Event::Key(Key::Ctrl('c')) => Some(Action::Quit),
-            Event::Key(Key::Ctrl('p')) => Some(Action::Pause),
-            Event::Key(Key::Char(']')) => Some(Action::Forward5),
-            Event::Key(Key::Char('[')) => Some(Action::Backward5),
-            Event::Key(Key::Ctrl('r')) => Some(Action::Refresh),
-            Event::Key(Key::Ctrl('s')) => Some(Action::Stop),
-            Event::Key(Key::Ctrl('a')) => Some(Action::AddAll),
-            Event::Key(Key::Alt('p')) => Some(Action::ShowPlaylist),
-            Event::Key(Key::Alt('a')) => Some(Action::SwitchToAlbums),
-            Event::Key(Key::Alt('t')) => Some(Action::SwitchToTracks),
-            Event::Key(Key::Alt('s')) => Some(Action::SwitchToArtists),
-            Event::Key(Key::Char('\n')) => Some(Action::Enter),
-            Event::Key(Key::Char('\t')) => Some(Action::SwitchView),
-            Event::Key(Key::Char(c)) => Some(Action::Char(*c)),
-            Event::Key(Key::Backspace) => Some(Action::Backspace),
+            Key::Up => Some(Action::PointerUp),
+            Key::Down => Some(Action::PointerDown),
+            Key::Right => Some(Action::NextTrack),
+            Key::Left => Some(Action::PrevTrack),
+            Key::Delete | Key::Ctrl('c') => Some(Action::Quit),
+            Key::Ctrl('p') => Some(Action::FlipPause),
+            Key::Char(']') => Some(Action::Forward5),
+            Key::Char('[') => Some(Action::Backward5),
+            Key::Ctrl('r') => Some(Action::Refresh),
+            Key::Ctrl('s') => Some(Action::Stop),
+            Key::Ctrl('a') => Some(Action::AddAll),
+            Key::Alt('p') => Some(Action::ShowPlaylist),
+            Key::Alt('a') => Some(Action::SwitchToAlbums),
+            Key::Alt('t') => Some(Action::SwitchToTracks),
+            Key::Alt('s') => Some(Action::SwitchToArtists),
+            Key::Char('\n') => Some(Action::Enter),
+            Key::Char('\t') => Some(Action::SwitchView),
+            Key::Char(c) => Some(Action::Char(*c)),
+            Key::Backspace => Some(Action::Backspace),
             _ => None,
         }
     }
 
     pub fn actions(self) -> (mpsc::UnboundedReceiver<Action>, Arc<Mutex<Context>>) {
-        let (mut action_tx, action_rx) = mpsc::unbounded_channel();
+        let (mut action_tx, action_rx) = mpsc::unbounded();
         let context = Arc::new(Mutex::new(Context::search()));
 
         let current_context = context.clone();
@@ -169,7 +186,8 @@ impl BindingConfig {
         tokio::spawn(async move {
             let mut stdin = tokio::io::stdin();
             let stream = crate::input::events_stream(&mut stdin);
-            let mut stream = Box::pin(stream);
+            futures::pin_mut!(stream);
+
             while let Some(event) = stream.next().await {
                 match event {
                     Ok(event) => {

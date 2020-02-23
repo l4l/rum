@@ -1,6 +1,8 @@
 use std::io::{Error, ErrorKind};
 use std::marker::Unpin;
 
+use async_stream::stream;
+use futures::Stream;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tokio::io::AsyncReadExt;
 use tokio::prelude::*;
@@ -233,14 +235,14 @@ pub async fn parse_event(mut rdr: &mut (impl AsyncRead + Unpin)) -> Result<Event
     }
 }
 
-pub fn events_stream(rdr: impl AsyncRead + Unpin) -> impl Stream<Item = Result<Event, Error>> {
-    tokio::stream::unfold(rdr, |mut rdr| {
-        async move {
+pub fn events_stream(mut rdr: impl AsyncRead + Unpin) -> impl Stream<Item = Result<Event, Error>> {
+    stream! {
+        loop {
             match parse_event(&mut rdr).await {
-                Ok(event) => Some((Ok(event), rdr)),
-                Err(err) if err.kind() == ErrorKind::UnexpectedEof => None,
-                Err(err) => Some((Err(err), rdr)),
+                Ok(event) => yield Ok(event),
+                Err(err) if err.kind() == ErrorKind::UnexpectedEof => break,
+                Err(err) => yield Err(err),
             }
         }
-    })
+    }
 }

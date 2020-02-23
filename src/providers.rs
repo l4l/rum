@@ -202,11 +202,6 @@ pub enum Error {
     HttpError { url: String, source: reqwest::Error },
     #[snafu(display("html error: {}", source))]
     HtmlError { source: unhtml::Error },
-    #[snafu(display("JsonError({})", source))]
-    JsonError {
-        body: String,
-        source: serde_json::Error,
-    },
     #[snafu(display("XmlError({})", source))]
     XmlError {
         body: String,
@@ -354,14 +349,10 @@ impl Provider {
                 format!("https%3A%2F%2Fmusic.yandex.ru%2Falbum%2F{}", track.album_id),
             )
             .send()
-            .and_then(|r| r.text())
+            .and_then(|r| r.json::<BalancerResponse>())
             .await
-            .context(HttpError { url })
-            .and_then(|balancer| {
-                serde_json::from_str::<BalancerResponse>(&balancer)
-                    .map(|r| r.src)
-                    .context(JsonError { body: balancer })
-            })?;
+            .context(HttpError { url })?
+            .src;
 
         let info = self
             .client

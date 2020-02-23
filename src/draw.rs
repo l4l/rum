@@ -8,7 +8,7 @@ use tui::terminal::Frame;
 use tui::widgets::{Block, Borders, List, Paragraph, Text, Widget};
 use tui::Terminal;
 
-use crate::app;
+use crate::view;
 
 type Backend = TermionBackend<RawTerminal<Stdout>>;
 
@@ -20,91 +20,72 @@ impl Drawer {
     pub fn new() -> Result<Self, Error> {
         let stdout = stdout().into_raw_mode()?;
         let backend = TermionBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let mut terminal = Terminal::new(backend)?;
 
-        let mut this = Self { terminal };
+        terminal.clear()?;
+        terminal.hide_cursor()?;
 
-        this.terminal.clear()?;
-        this.terminal.hide_cursor()?;
-
-        Ok(this)
+        Ok(Self { terminal })
     }
 
-    pub fn redraw(&mut self, view: &app::View) -> Result<(), Error> {
-        match &view {
-            app::View::ArtistSearch(search) => self.terminal.draw(|mut frame| {
-                search.draw(&mut frame);
-            }),
-            app::View::AlbumSearch(search) => self.terminal.draw(|mut frame| {
-                search.draw(&mut frame);
-            }),
-            app::View::TrackSearch(search) => self.terminal.draw(|mut frame| {
-                search.draw(&mut frame);
-            }),
-            app::View::TrackList(list) => self.terminal.draw(|mut frame| {
-                list.draw(&mut frame);
-            }),
-            app::View::Playlist(playlist) => self.terminal.draw(|mut frame| {
-                playlist.draw(&mut frame);
-            }),
+    pub fn redraw(&mut self, view: &view::MainView) -> Result<(), Error> {
+        self.terminal.draw(|mut frame| {
+            view.draw(&mut frame);
+        })
+    }
+}
+
+impl view::MainView {
+    fn draw(&self, mut frame: &mut Frame<Backend>) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
+            .split(frame.size());
+        let texts = [Text::styled(
+            self.insert_buffer(),
+            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
+        )];
+        Paragraph::new(texts.iter())
+            .block(
+                Block::default()
+                    .title(self.view().name())
+                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
+                    .borders(Borders::ALL),
+            )
+            .alignment(Alignment::Center)
+            .wrap(true)
+            .render(&mut frame, chunks[0]);
+
+        self.view().draw_at(frame, chunks[1])
+    }
+}
+
+impl view::View {
+    fn draw_at(&self, frame: &mut Frame<Backend>, chunk: Rect) {
+        match self {
+            view::View::ArtistSearch(search) => search.draw_at(frame, chunk),
+            view::View::AlbumSearch(search) => search.draw_at(frame, chunk),
+            view::View::TrackList(list) => list.draw_at(frame, chunk),
+            view::View::Playlist(playlist) => playlist.draw_at(frame, chunk),
         }
     }
 }
 
-impl app::ArtistSearch {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-        let texts = [Text::styled(
-            &self.insert_buffer,
-            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
-        )];
-        Paragraph::new(texts.iter())
-            .block(
-                Block::default()
-                    .title("Artist Search String")
-                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
-                    .borders(Borders::ALL),
-            )
-            .alignment(Alignment::Center)
-            .wrap(true)
-            .render(&mut frame, chunks[0]);
-
+impl view::ArtistSearch {
+    fn draw_at(&self, mut frame: &mut Frame<Backend>, chunk: Rect) {
         List::new(cursored_line(
             self.cached_artists.iter().map(|album| &album.name),
             self.cursor,
-            chunks[1],
+            chunk,
         ))
         .block(Block::default().title("Artists").borders(Borders::ALL))
-        .render(&mut frame, chunks[1]);
+        .render(&mut frame, chunk);
     }
 }
 
-impl app::AlbumSearch {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-        let texts = [Text::styled(
-            &self.insert_buffer,
-            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
-        )];
-        Paragraph::new(texts.iter())
-            .block(
-                Block::default()
-                    .title("Album Search String")
-                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
-                    .borders(Borders::ALL),
-            )
-            .alignment(Alignment::Center)
-            .wrap(true)
-            .render(&mut frame, chunks[0]);
-
+impl view::AlbumSearch {
+    fn draw_at(&self, mut frame: &mut Frame<Backend>, chunk: Rect) {
         List::new(cursored_line(
             self.cached_albums.iter().map(|album| {
                 if let Some(ref version) = album.version {
@@ -133,45 +114,15 @@ impl app::AlbumSearch {
                 }
             }),
             self.cursor,
-            chunks[1],
+            chunk,
         ))
         .block(Block::default().title("Albums").borders(Borders::ALL))
-        .render(&mut frame, chunks[1]);
+        .render(&mut frame, chunk);
     }
 }
 
-impl app::TrackSearch {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-        let texts = [Text::styled(
-            &self.insert_buffer,
-            Style::default().fg(Color::Gray).modifier(Modifier::BOLD),
-        )];
-        Paragraph::new(texts.iter())
-            .block(
-                Block::default()
-                    .title("Track Search String")
-                    .title_style(Style::default().fg(Color::Magenta).modifier(Modifier::BOLD))
-                    .borders(Borders::ALL),
-            )
-            .alignment(Alignment::Center)
-            .wrap(true)
-            .render(&mut frame, chunks[0]);
-    }
-}
-
-impl app::TrackList {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(5), Constraint::Percentage(80)].as_ref())
-            .split(frame.size());
-
+impl view::TrackList {
+    fn draw_at(&self, mut frame: &mut Frame<Backend>, chunk: Rect) {
         List::new(cursored_line(
             self.cached_tracks.iter().map(|track| {
                 format!(
@@ -181,21 +132,15 @@ impl app::TrackList {
                 )
             }),
             self.cursor,
-            chunks[1],
+            chunk,
         ))
         .block(Block::default().title("Found Tracks").borders(Borders::ALL))
-        .render(&mut frame, chunks[1]);
+        .render(&mut frame, chunk);
     }
 }
 
-impl app::Playlist {
-    fn draw(&self, mut frame: &mut Frame<Backend>) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Percentage(100)].as_ref())
-            .split(frame.size());
-
+impl view::Playlist {
+    fn draw_at(&self, mut frame: &mut Frame<Backend>, chunk: Rect) {
         List::new(cursored_line(
             self.tracks.iter().map(|track| {
                 format!(
@@ -205,26 +150,25 @@ impl app::Playlist {
                 )
             }),
             self.current,
-            chunks[0],
+            chunk,
         ))
         .block(Block::default().title("Playlist").borders(Borders::ALL))
-        .render(&mut frame, chunks[0]);
+        .render(&mut frame, chunk);
     }
 }
 
 fn cursored_line<'a>(
-    iter: impl IntoIterator<Item = impl ToString>,
+    iter: impl IntoIterator<Item = impl Into<String>>,
     cursor_pos: usize,
     chunk: Rect,
 ) -> impl Iterator<Item = Text<'a>> {
     let half = usize::from(chunk.height) / 2;
     let skip = cursor_pos.saturating_sub(half);
     iter.into_iter()
-        .skip(skip)
         .enumerate()
+        .skip(skip)
         .map(move |(i, line)| {
-            let line = line.to_string();
-            let style = if i + skip == cursor_pos {
+            let style = if i == cursor_pos {
                 Style::default()
                     .bg(Color::Gray)
                     .fg(Color::Black)
@@ -232,6 +176,6 @@ fn cursored_line<'a>(
             } else {
                 Default::default()
             };
-            Text::styled(line, style)
+            Text::styled(line.into(), style)
         })
 }
