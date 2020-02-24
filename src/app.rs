@@ -151,7 +151,7 @@ impl State {
 
     async fn select(&mut self) -> Result<Option<Command>, crate::providers::Error> {
         match &mut *self.main_view {
-            View::AlbumSearch(search) if !search.cached_albums.is_empty() => {
+            View::AlbumSearch(search) if search.cursor < search.cached_albums.len() => {
                 let album = &search.cached_albums[search.cursor];
                 let tracks = self
                     .provider
@@ -173,7 +173,7 @@ impl State {
 
                 self.update_view(TrackList::from(tracks));
             }
-            View::TrackList(search) => {
+            View::TrackList(search) if search.cursor < search.cached_tracks.len() => {
                 let track = search.cached_tracks[search.cursor].clone();
                 let url = self.provider.get_track_url(&track).await?;
                 log::info!("{:?}; {:?}", track, url);
