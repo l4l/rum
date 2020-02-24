@@ -201,7 +201,7 @@ mod tests {
 "PointerDown" = "ArrowUp"
 
 [hotkey.tracklist]
-"Enter" = "Alt+0"
+"Select" = "Alt+0"
 "#
         .to_string();
 

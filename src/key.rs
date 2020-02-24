@@ -93,7 +93,8 @@ pub enum Action {
     SwitchToAlbums,
     SwitchToTracks,
     SwitchToArtists,
-    Enter,
+    Search,
+    Select,
     SwitchView,
     PrevView,
     #[serde(skip)]
@@ -170,7 +171,8 @@ impl BindingConfig {
             Key::Alt('a') => Some(Action::SwitchToAlbums),
             Key::Alt('t') => Some(Action::SwitchToTracks),
             Key::Alt('s') => Some(Action::SwitchToArtists),
-            Key::Char('\n') => Some(Action::Enter),
+            Key::Alt('\n') => Some(Action::Search),
+            Key::Char('\n') => Some(Action::Select),
             Key::Char('\t') => Some(Action::SwitchView),
             Key::Char(c) => Some(Action::Char(*c)),
             Key::Backspace => Some(Action::Backspace),
@@ -279,7 +281,7 @@ mod tests {
                 if context == search {
                     ContextedAction {
                         context,
-                        action: Action::Enter,
+                        action: Action::Search,
                     }
                 } else {
                     ContextedAction {
@@ -295,7 +297,7 @@ mod tests {
             .into();
 
         if let Some(found) = config.action(search, &event) {
-            TestResult::from_bool(found == Action::Enter)
+            TestResult::from_bool(found == Action::Search)
         } else {
             TestResult::error("item not found")
         }

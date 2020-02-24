@@ -54,7 +54,8 @@ Default hotkeys are the following:
 - Alt+p - switch to playlist view;
 - ] - skip 5 seconds forward of currently played track;
 - [ - skip 5 seconds backward of currently played track;
-- Enter - select item at list view (at track list view append to the end of playlist, rather than replacing it);
+- Alt+Enter - search item in buffer;
+- Enter - select item at list view;
 - Ctrl+c/Delete - quit the program.
 
 # Development
