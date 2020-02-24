@@ -130,7 +130,7 @@ impl State {
         Ok(())
     }
 
-    async fn action(&mut self) -> Result<Option<Command>, crate::providers::Error> {
+    async fn search(&mut self) -> Result<(), crate::providers::Error> {
         match self.main_view.view_and_buffer_mut() {
             (View::ArtistSearch(search), insert_buffer) if !insert_buffer.is_empty() => {
                 search.cached_artists = self.provider.artists_search(&insert_buffer).await?.artists;
@@ -140,7 +140,18 @@ impl State {
                 search.cached_albums = self.provider.album_search(&insert_buffer).await?.albums;
                 insert_buffer.clear();
             }
-            (View::AlbumSearch(search), _) if !search.cached_albums.is_empty() => {
+            (View::TrackList(_), insert_buffer) if !insert_buffer.is_empty() => {
+                let tracks = self.provider.track_search(insert_buffer).await?.tracks;
+                self.update_view(TrackList::from(tracks));
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn select(&mut self) -> Result<Option<Command>, crate::providers::Error> {
+        match &mut *self.main_view {
+            View::AlbumSearch(search) if search.cursor < search.cached_albums.len() => {
                 let album = &search.cached_albums[search.cursor];
                 let tracks = self
                     .provider
@@ -162,13 +173,10 @@ impl State {
 
                 self.update_view(TrackList::from(tracks));
             }
-            (View::TrackList(_), insert_buffer) if !insert_buffer.is_empty() => {
-                let tracks = self.provider.track_search(insert_buffer).await?.tracks;
-                self.update_view(TrackList::from(tracks));
-            }
-            (View::TrackList(search), _) => {
+            View::TrackList(search) if search.cursor < search.cached_tracks.len() => {
                 let track = search.cached_tracks[search.cursor].clone();
                 let url = self.provider.get_track_url(&track).await?;
+                log::info!("{:?}; {:?}", track, url);
                 return Ok(Some(Command::Enqueue { track, url }));
             }
             _ => {}
@@ -305,7 +313,13 @@ impl App {
                         logger.log(Level::Error, "cannot switch to artist search", err);
                     }
                 }
-                Action::Enter => match state.action().await {
+                Action::Search => match state.search().await {
+                    Ok(()) => logger.log(Level::Info, "ok", "completed"),
+                    Err(err) => {
+                        logger.log(Level::Error, "search failed", err);
+                    }
+                },
+                Action::Select => match state.select().await {
                     Ok(cmd) => {
                         if let Some(cmd) = cmd {
                             player_commands
