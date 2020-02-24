@@ -5,6 +5,8 @@
 
 RUM is a terminal music player, that able to play remote media from different sources (currently only Ya.Music).
 
+![](assets/demo.gif)
+
 # Usage
 
 Playing media is performed via _mpv_ player, thus it need to be accessible.
