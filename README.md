@@ -3,11 +3,13 @@
 [![Build Status](https://travis-ci.org/l4l/rum.svg?branch=master)](https://travis-ci.org/l4l/rum)
 [![Crates.io](https://img.shields.io/crates/v/rum-player.svg)](https://crates.io/crates/rum-player)
 
-RUM is a terminal music player, that able to play remote media from different sources (currently only Ya.Music).
+RUM is a terminal music player powered by [tui-rs](https://github.com/fdehau/tui-rs). It is able to play remote audio from Ya.Music. **Note:** Haven't been tested on MacOS yet, feel free to file a report/issues.
+
+![](assets/demo.gif)
 
 # Usage
 
-Playing media is performed via _mpv_ player, thus it need to be accessible.
+Playing media is performed via _mpv_ player, thus it need to be installed (e.g. libmpv-dev on ubuntu, or mpv on arch linux).
 
 ```bash
 cargo install rum-player
@@ -16,11 +18,11 @@ export PATH=$PATH:~/.cargo/bin
 rum-player
 ```
 
-Currently, the tool has 3 main views: search panel, tracks listing and playlist.
+Currently, the tool has several main views: album/artist search panel, track list view and a playlist.
 
 ## Hotkeys
 
-Hotkeys can be set via toml config, that should be placed at `$XDG_CONFIG_HOME` for Linux, or at `$HOME/Library/Preferences` for macOS. All bindings must be specified at `[hotkey]` table and should be in form (note quotes): `"Event" = "Action"`. Hotkeys might also be specified for a particular view or context (currently only for one at a time) via subtable. If no context specified then hotkey considered as global and will be used with a lower priority. Here is a config example:
+Hotkeys can be set via toml config, it should be placed at `$XDG_CONFIG_HOME` for Linux, or at `$HOME/Library/Preferences` for macOS. All bindings must be specified at `[hotkey]` table and should be in form (note quotes): `"Event" = "Action"`. Hotkeys might also be specified for a particular view or context (currently only for one at a time) via sub-table. If no context specified then hotkey considered as global and will be used with a lower priority. Here is a config example:
 
 ```toml
 [hotkey]
@@ -36,7 +38,7 @@ Hotkeys can be set via toml config, that should be placed at `$XDG_CONFIG_HOME` 
 "PointerDown" = "ArrowUp"
 
 [hotkey.tracklist]
-"Enter" = "Alt+0"
+"Select" = "Alt+0"
 ```
 
 Default hotkeys are the following:
@@ -60,4 +62,4 @@ Default hotkeys are the following:
 
 # Development
 
-For development you need a nightly compiler, since dependency requires it: `rustup default toolchain nightly`. Afterwards you may build sources via `cargo build` and start hacking. Please also use rustfmt & clippy at development process: `rustup component add rustfmt clippy`.
+For development you need any rust compiler: https://rustup.rs/. Afterwards you may build sources via `cargo build` and start hacking. Please also use rustfmt & clippy at development process: `rustup component add rustfmt clippy`.
